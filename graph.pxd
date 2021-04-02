@@ -1,6 +1,7 @@
 '''
 file:graph.pxd 类graph的定义文件对应graph.h
 '''
+
 #Cython已经编译了C++的std模板库，位置在~/Cython/Includes/lincpp/
 from libcpp.vector cimport vector
 from libcpp.memory cimport shared_ptr
@@ -9,11 +10,12 @@ from libcpp.pair cimport pair
 cdef extern from "./src/lib/graph.h":
     cdef cppclass Graph:
         Graph()except+
-        Graph(const int _num_nodes, const int _num_edges, const int* edges_from, const int* edges_to) except+
+        Graph(const int _num_nodes, const int _num_edges, const int* edges_from, const int* edges_to, const double* _edge_weights) except+
         int num_nodes
         int num_edges
         vector[vector[int]] adj_list
         vector[pair[int,int]] edge_list
+        vector[double] edge_weights
 
 cdef extern from "./src/lib/graph.h":
     cdef cppclass GSet:

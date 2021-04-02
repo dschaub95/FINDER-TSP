@@ -23,11 +23,12 @@ import mvc_env
 import utils
 import scipy.linalg as linalg
 import os
+from itertools import combinations 
 
 # Hyper Parameters:
 cdef double GAMMA = 1  # decay rate of past observations
 cdef int UPDATE_TIME = 1000
-cdef int EMBEDDING_SIZE = 64
+cdef int EMBEDDING_SIZE = 64 # dimension p for each vector encoding of the nodes in the graph
 cdef int MAX_ITERATION = 500000
 cdef double LEARNING_RATE = 0.0001   #dai
 cdef int MEMORY_SIZE = 500000
@@ -39,18 +40,19 @@ cdef double beta = 0.4  # importance-sampling, from initial value increasing to 
 cdef double beta_increment_per_sampling = 0.001
 cdef double TD_err_upper = 1.  # clipped abs error
 ########################## hyperparameters for priority(end)#########################################
-cdef int N_STEP = 5
-cdef int NUM_MIN = 30
-cdef int NUM_MAX = 50
+cdef int N_STEP = 5 # number of steps in NDQN until the reward is observed
+cdef int NUM_MIN = 10 # min dim of training graphs
+cdef int NUM_MAX = 20 # max dim of training graphs
 cdef int REG_HIDDEN = 32
-cdef int BATCH_SIZE = 64
-cdef double initialization_stddev = 0.01  # 权重初始化的方差
-cdef int n_valid = 200
-cdef int aux_dim = 4
+cdef int BATCH_SIZE = 64 # Batch size for training
+cdef double initialization_stddev = 0.01  # variance of weight initilization
+cdef int n_valid = 100 # number of graphs in validation set (originally 200)
+cdef int n_generator = 500 # number of graphs for each training graph generation cycle
+cdef int aux_dim = 4 # not used in original code
 cdef int num_env = 1
 cdef double inf = 2147483647/2
 #########################  embedding method ##########################################################
-cdef int max_bp_iter = 3
+cdef int max_bp_iter = 3 # number of aggregation steps in GNN = number of layers
 cdef int aggregatorID = 0 #0:sum; 1:mean; 2:GCN
 cdef int embeddingMethod = 1   #0:structure2vec; 1:graphsage
 
@@ -62,8 +64,9 @@ class FINDER:
         # init some parameters
         self.embedding_size = EMBEDDING_SIZE
         self.learning_rate = LEARNING_RATE
-        self.g_type = 'barabasi_albert' #erdos_renyi, powerlaw, small-world， barabasi_albert
-        self.TrainSet = graph.py_GSet()
+        self.g_type = 'tsp' #erdos_renyi, powerlaw, small-world， barabasi_albert
+        
+        self.TrainSet = graph.py_GSet() # initializes the training and test set object
         self.TestSet = graph.py_GSet()
         self.inputs = dict()
         self.reg_hidden = REG_HIDDEN
@@ -138,8 +141,10 @@ class FINDER:
 #################################################New code for FINDER#####################################
     def BuildNet(self):
         # [2, embed_dim]
+        
         w_n2l = tf.Variable(tf.truncated_normal([2, self.embedding_size], stddev=initialization_stddev), tf.float32)
         # [embed_dim, embed_dim]
+        # Define weight matrices for GNN 
         p_node_conv = tf.Variable(tf.truncated_normal([self.embedding_size, self.embedding_size], stddev=initialization_stddev), tf.float32)
         if embeddingMethod == 1:    #'graphsage'
             # [embed_dim, embed_dim]
@@ -184,9 +189,9 @@ class FINDER:
         #[node_cnt, embed_dim]  # no sparse
         input_potential_layer = tf.nn.relu(input_message)
 
-        # # no sparse
-        # [batch_size, embed_dim]
-        y_input_message = tf.matmul(tf.cast(y_node_input,tf.float32), w_n2l)
+        
+        # intial node embedding, no sparse
+        y_input_message = tf.matmul(tf.cast(y_node_input,tf.float32), w_n2l) # [batch_size, embed_dim]
         #[batch_size, embed_dim]  # no sparse
         y_input_potential_layer = tf.nn.relu(y_input_message)
 
@@ -204,11 +209,12 @@ class FINDER:
         while lv < max_bp_iter:
             lv = lv + 1
             #[node_cnt, node_cnt] * [node_cnt, embed_dim] = [node_cnt, embed_dim], dense
-            n2npool = tf.sparse_tensor_dense_matmul(tf.cast(self.n2nsum_param,tf.float32), cur_message_layer)
+            n2npool = tf.sparse_tensor_dense_matmul(tf.cast(self.n2nsum_param,tf.float32), cur_message_layer) 
+            # tf.cast casts tensor to new type, tf.sparse_tensor_dense_matmul multiplies sparse tensor of rank 2 with dense matrix
 
             #[node_cnt, embed_dim] * [embed_dim, embed_dim] = [node_cnt, embed_dim], dense
             node_linear = tf.matmul(n2npool, p_node_conv)
-
+            # simple matrix multiplication
             # [batch_size, node_cnt] * [node_cnt, embed_dim] = [batch_size, embed_dim]
             y_n2npool = tf.sparse_tensor_dense_matmul(tf.cast(self.subgsum_param,tf.float32), cur_message_layer)
             #[batch_size, embed_dim] * [embed_dim, embed_dim] = [batch_size, embed_dim], dense
@@ -277,6 +283,7 @@ class FINDER:
         ## first order reconstruction loss
         loss_recons = 2 * tf.trace(tf.matmul(tf.transpose(cur_message_layer), tf.sparse_tensor_dense_matmul(tf.cast(self.laplacian_param,tf.float32), cur_message_layer)))
         edge_num = tf.sparse_reduce_sum(tf.cast(self.n2nsum_param, tf.float32))
+        
         loss_recons = tf.divide(loss_recons, edge_num)
 
         if self.IsPrioritizedSampling:
@@ -290,7 +297,7 @@ class FINDER:
                 loss_rl = tf.losses.huber_loss(self.target, q_pred)
             else:
                 loss_rl = tf.losses.mean_squared_error(self.target, q_pred)
-
+        # calculate full loss
         loss = loss_rl + Alpha * loss_recons
 
         trainStep = tf.train.AdamOptimizer(self.learning_rate).minimize(loss)
@@ -342,14 +349,20 @@ class FINDER:
             g = nx.connected_watts_strogatz_graph(n=cur_n, k=8, p=0.1)
         elif self.g_type == 'barabasi_albert':
             g = nx.barabasi_albert_graph(n=cur_n, m=4)
+        elif self.g_type == 'tsp':
+            # slow code, might need optimization
+            nodes = np.random.rand(cur_n,2)
+            edges = [(s[0],t[0],np.linalg.norm(s[1]-t[1])) for s,t in combinations(enumerate(nodes),2)]
+            g = nx.Graph()
+            g.add_weighted_edges_from(edges)
         return g
 
-    def gen_new_graphs(self, num_min, num_max):
+    def gen_new_graphs(self, num_min, num_max, num_graphs=n_generator):
         print('\ngenerating new training graphs...')
         sys.stdout.flush()
         self.ClearTrainGraphs()
         cdef int i
-        for i in tqdm(range(1000)):
+        for i in tqdm(range(num_graphs)):
             g = self.gen_graph(num_min, num_max)
             self.InsertGraph(g, is_test=False)
 
@@ -393,19 +406,23 @@ class FINDER:
         cdef int num_env = len(self.env_list)
         cdef int n = 0
         cdef int i
+        # num_seq is the number of full sequences starting at an initial state until termination
         while n < num_seq:
             for i in range(num_env):
                 if self.env_list[i].graph.num_nodes == 0 or self.env_list[i].isTerminal():
                     if self.env_list[i].graph.num_nodes > 0 and self.env_list[i].isTerminal():
                         n = n + 1
+                        # after reaching the terminal state add all nstep transitions to the replay memory 
+                        print("adding new experience to the Replay buffer")
                         self.nStepReplayMem.Add(self.env_list[i], n_step)
-                        #print ('add experience transition!')
-                    g_sample= TrainSet.Sample()
+                        print('added experience transition!')
+                    g_sample = TrainSet.Sample()
                     self.env_list[i].s0(g_sample)
                     self.g_list[i] = self.env_list[i].graph
+                    print("added new sample to the graph list, current length:", len(self.g_list))
+            
             if n >= num_seq:
                 break
-
             Random = False
             if random.uniform(0,1) >= eps:
                 pred = self.PredictWithCurrentQNet(self.g_list, [env.action_list for env in self.env_list])
@@ -420,6 +437,7 @@ class FINDER:
                 self.env_list[i].step(a_t)
     #pass
     def PlayGame(self, int n_traj, double eps):
+        print("Playing game!")
         self.Run_simulator(n_traj, eps, self.TrainSet, N_STEP)
 
 
@@ -446,9 +464,11 @@ class FINDER:
         self.inputs['aux_input'] = prepareBatchGraph.aux_feat
         return prepareBatchGraph.idx_map_list
 
-    def Predict(self,g_list,covered,isSnapSnot):
+    def Predict(self, g_list , covered, isSnapShot):
+        
         cdef int n_graphs = len(g_list)
         cdef int i, j, k, bsize
+        print("number of graphs for prediction:", n_graphs)
         for i in range(0, n_graphs, BATCH_SIZE):
             bsize = BATCH_SIZE
             if (i + BATCH_SIZE) > n_graphs:
@@ -457,7 +477,7 @@ class FINDER:
             for j in range(i, i + bsize):
                 batch_idxes[j - i] = j
             batch_idxes = np.int32(batch_idxes)
-
+            print("Setting up PredAll")
             idx_map_list = self.SetupPredAll(batch_idxes, g_list, covered)
             my_dict = {}
             my_dict[self.rep_global] = self.inputs['rep_global']
@@ -465,10 +485,13 @@ class FINDER:
             my_dict[self.subgsum_param] = self.inputs['subgsum_param']
             my_dict[self.aux_input] = np.array(self.inputs['aux_input'])
 
-            if isSnapSnot:
+            print("running training session")
+            if isSnapShot:
                 result = self.session.run([self.q_on_allT], feed_dict = my_dict)
+                print("sucessfully ran training session")
             else:
                 result = self.session.run([self.q_on_all], feed_dict = my_dict)
+                print("sucessfully ran training session")
             raw_output = result[0]
             pos = 0
             pred = []
@@ -487,49 +510,67 @@ class FINDER:
             assert (pos == len(raw_output))
         return pred
 
-    def PredictWithCurrentQNet(self,g_list,covered):
-        result = self.Predict(g_list,covered,False)
+    def PredictWithCurrentQNet(self, g_list, covered):
+        print("predicting with current QNet...")
+        result = self.Predict(g_list, covered, isSnapShot=False)
         return result
 
-    def PredictWithSnapshot(self,g_list,covered):
-        result = self.Predict(g_list,covered,True)
+    def PredictWithSnapshot(self, g_list, covered):
+        print("predicting with snapshot...")
+        result = self.Predict(g_list, covered, isSnapShot=True)
         return result
     #pass
     def TakeSnapShot(self):
+       print("Taking snapshot")
        self.session.run(self.UpdateTargetQNetwork)
 
     def Fit(self):
+        # obtain mini batch sample
         sample = self.nStepReplayMem.Sampling(BATCH_SIZE)
+        print("mini batch sample obtained")
+        ### start: calculate target
         ness = False
         cdef int i
         for i in range(BATCH_SIZE):
             if (not sample.list_term[i]):
                 ness = True
                 break
+        print("checked whether mini batch is containing at least one non terminal state sample, it evaluated to:", ness)
         if ness:
             if self.IsDoubleDQN:
+                # first make prediction with current Q Net for all possible actions and graphs in batch
                 double_list_pred = self.PredictWithCurrentQNet(sample.g_list, sample.list_s_primes)
+                # secondly make prediction with snapshot (older) Q Net for all possible actions and graphs in batch
                 double_list_predT = self.PredictWithSnapshot(sample.g_list, sample.list_s_primes)
+                # calculate final prediction for the target term (approximation of expected future return) 
+                # by using current net to calculate best action and older net to claculate the approx expected reward
                 list_pred = [a[self.argMax(b)] for a, b in zip(double_list_predT, double_list_pred)]
             else:
+                # just use older version to 
+                print("predicting with snapshot..")
                 list_pred = self.PredictWithSnapshot(sample.g_list, sample.list_s_primes)
+                print("sucessfully predicted with snapshot")
+
 
         list_target = np.zeros([BATCH_SIZE, 1])
-
+        # calculate the target
         for i in range(BATCH_SIZE):
             q_rhs = 0
             if (not sample.list_term[i]):
                 if self.IsDoubleDQN:
-                    q_rhs=GAMMA * list_pred[i]
+                    q_rhs = GAMMA * list_pred[i]
                 else:
-                    q_rhs=GAMMA * self.Max(list_pred[i])
+                    q_rhs = GAMMA * self.Max(list_pred[i])
+            # add the reward to the target
             q_rhs += sample.list_rt[i]
             list_target[i] = q_rhs
             # list_target.append(q_rhs)
+        ### end: calculate target
+        print("sucessfully calculated the target for DQN optimization")
         if self.IsPrioritizedSampling:
             return self.fit_with_prioritized(sample.b_idx,sample.ISWeights,sample.g_list, sample.list_st, sample.list_at,list_target)
         else:
-            return self.fit(sample.g_list, sample.list_st, sample.list_at,list_target)
+            return self.fit(sample.g_list, sample.list_st, sample.list_at, list_target)
 
     def fit_with_prioritized(self,tree_idx,ISWeights,g_list,covered,actions,list_target):
         cdef double loss = 0.0
@@ -564,6 +605,7 @@ class FINDER:
 
 
     def fit(self,g_list,covered,actions,list_target):
+        # 
         cdef double loss = 0.0
         cdef int n_graphs = len(g_list)
         cdef int i, j, bsize
@@ -614,9 +656,11 @@ class FINDER:
         VCFile = '%s/ModelVC_%d_%d.csv'%(save_dir, NUM_MIN, NUM_MAX)
         f_out = open(VCFile, 'w')
         for iter in range(MAX_ITERATION):
+            print("Iteration: ", iter)
             start = time.clock()
             ###########-----------------------normal training data setup(start) -----------------##############################
             if iter and iter % 5000 == 0:
+                print("generating new traning graphs")
                 self.gen_new_graphs(NUM_MIN, NUM_MAX)
             eps = eps_end + max(0., (eps_start - eps_end) * (eps_step - iter) / eps_step)
 
@@ -643,6 +687,7 @@ class FINDER:
                 self.SaveModel(model_path)
             if iter % UPDATE_TIME == 0:
                 self.TakeSnapShot()
+            print("Fitting")
             self.Fit()
         f_out.close()
 
@@ -837,23 +882,29 @@ class FINDER:
 
 
     def SaveModel(self,model_path):
+        # saves the model based on tf saver
         self.saver.save(self.session, model_path)
-        print('model has been saved success!')
+        print('model sucessfully saved!')
 
     def LoadModel(self,model_path):
         self.saver.restore(self.session, model_path)
-        print('restore model from file successfully')
+        print('model sucessfully restored from file')
 
     def GenNetwork(self, g):    #networkx2four
+        # transforms the networkx graph object into C graph object using external pyx module
+        nodes = g.nodes()
         edges = g.edges()
         if len(edges) > 0:
-            a, b = zip(*edges)
+            a, b = zip(*edges) 
             A = np.array(a)
             B = np.array(b)
+            W = np.array([g[n][m]['weight'] for n, m in zip(a, b)])
+            # W = np.array([edge[2]['weight'] for edge in edges.data()])
         else:
             A = np.array([0])
             B = np.array([0])
-        return graph.py_Graph(len(g.nodes()), len(edges), A, B)
+            W = np.array([0])
+        return graph.py_Graph(len(nodes), len(edges), A, B, W)
 
 
     def argMax(self, scores):

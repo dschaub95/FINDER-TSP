@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <time.h>
 #include <math.h>
+#include <cstdio>
 
 #define max(x, y) (x > y ? x : y)
 #define min(x, y) (x > y ? y : x)
@@ -53,28 +54,39 @@ void NStepReplayMem::Add(std::shared_ptr<Graph> g,
 void NStepReplayMem::Add(std::shared_ptr<MvcEnv> env,int n_step)
 {
     assert(env->isTerminal());
+    // number of steps taken until terminal state is reached
     int num_steps = env->state_seq.size();
+    //printf("num_steps = %d \n", num_steps);
     assert(num_steps);
 
+    // calculate sum of rewards --> integral over CN score with node cost at x axis --> maximal at start
     env->sum_rewards[num_steps - 1] = env->reward_seq[num_steps - 1];
     for (int i = num_steps - 1; i >= 0; --i)
         if (i < num_steps - 1)
             env->sum_rewards[i] = env->sum_rewards[i + 1] + env->reward_seq[i];
-
+    //printf("reward_seq start = %f \n", env->reward_seq[0]);
+    //printf("reward_sum end = %f \n", env->sum_rewards[num_steps-1]);
+    //printf("reward_sum start = %f \n", env->sum_rewards[0]);
+    
+    // add all nstep transitions for that sample
     for (int i = 0; i < num_steps; ++i)
     {
         bool term_t = false;
         double cur_r;
         std::vector<int> s_prime;
+        // check whether we reach terminal state after n more steps
         if (i + n_step >= num_steps)
         {
             cur_r = env->sum_rewards[i];
             s_prime = (env->action_list);
+            
             term_t = true;
         } else {
+            // set reward to be the integral from current step to the next 
             cur_r = env->sum_rewards[i] - env->sum_rewards[i + n_step];
             s_prime = (env->state_seq[i + n_step]);
         }
+        // add transition to replay memory
         Add(env->graph, env->state_seq[i], env->act_seq[i], cur_r, s_prime, term_t);
     }
 }
@@ -82,7 +94,7 @@ void NStepReplayMem::Add(std::shared_ptr<MvcEnv> env,int n_step)
 std::shared_ptr<ReplaySample> NStepReplayMem::Sampling(int batch_size)
 {
 //    std::shared_ptr<ReplaySample> result {new ReplaySample(batch_size)};
-    std::shared_ptr<ReplaySample> result =std::shared_ptr<ReplaySample>(new ReplaySample(batch_size));
+    std::shared_ptr<ReplaySample> result = std::shared_ptr<ReplaySample>(new ReplaySample(batch_size));
     assert(count >= batch_size);
 
     result->g_list.resize(batch_size);

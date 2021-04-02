@@ -12,11 +12,11 @@ cdef extern from "./src/lib/mvc_env.h":
         double step(int a)except+
         void stepWithoutReward(int a)except+
         int randomAction()except+
-        int betweenAction()except+
+        # int betweenAction()except+
         bool isTerminal()except+
         # double getReward(double oldCcNum)except+
         double getReward()except+
-        double getMaxConnectedNodesNum()except+
+        # double getMaxConnectedNodesNum()except+
         double getRemainingCNDScore()except+
         double norm
         double CcNum

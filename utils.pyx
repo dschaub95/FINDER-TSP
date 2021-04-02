@@ -22,6 +22,7 @@ cdef class py_Utils:
         deref(self.inner_Graph).num_edges = _g.num_edges
         deref(self.inner_Graph).edge_list = _g.edge_list
         deref(self.inner_Graph).adj_list = _g.adj_list
+        deref(self.inner_Graph).edge_weights = _g.edge_weights
         return deref(self.inner_Utils).getRobustness(self.inner_Graph,solution)
 
 
@@ -31,6 +32,7 @@ cdef class py_Utils:
         deref(self.inner_Graph).num_edges = _g.num_edges
         deref(self.inner_Graph).edge_list = _g.edge_list
         deref(self.inner_Graph).adj_list = _g.adj_list
+        deref(self.inner_Graph).edge_weights = _g.edge_weights
         return deref(self.inner_Utils).reInsert(self.inner_Graph,solution,allVex,decreaseStrategyID,reinsertEachStep)
 
     def getMxWccSz(self, _g):
@@ -39,6 +41,7 @@ cdef class py_Utils:
         deref(self.inner_Graph).num_edges = _g.num_edges
         deref(self.inner_Graph).edge_list = _g.edge_list
         deref(self.inner_Graph).adj_list = _g.adj_list
+        deref(self.inner_Graph).edge_weights = _g.edge_weights
         return deref(self.inner_Utils).getMxWccSz(self.inner_Graph)
 
     def Betweenness(self,_g):
@@ -47,6 +50,7 @@ cdef class py_Utils:
         deref(self.inner_Graph).num_edges = _g.num_edges
         deref(self.inner_Graph).edge_list = _g.edge_list
         deref(self.inner_Graph).adj_list = _g.adj_list
+        deref(self.inner_Graph).edge_weights = _g.edge_weights
         return deref(self.inner_Utils).Betweenness(self.inner_Graph)
 
     @property

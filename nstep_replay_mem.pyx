@@ -19,8 +19,10 @@ cdef class py_ReplaySample:
     @property
     def g_list(self):
         result = []
+        print("obtaining graph list...")
         for graphPtr in deref(self.inner_ReplaySample).g_list:
             result.append(self.G2P(deref(graphPtr)))
+            print("sucessfully appended graph")
         return  result
     @property
     def list_st(self):
@@ -36,19 +38,27 @@ cdef class py_ReplaySample:
         return deref(self.inner_ReplaySample).list_rt
     @property
     def list_term(self):
-        return deref(self.inner_ReplaySample).list_term
+        return deref(self.inner_ReplaySample).list_term #boolean whether terminal state is reached for that sample (after n or less steps)
 
-    cdef G2P(self,Graph graph1):
+    cdef G2P(self, Graph graph1):
         num_nodes = graph1.num_nodes     #得到Graph对象的节点个数
         num_edges = graph1.num_edges    #得到Graph对象的连边个数
         edge_list = graph1.edge_list
+        edge_weights = graph1.edge_weights
+        
         cint_edges_from = np.zeros([num_edges],dtype=np.int)
         cint_edges_to = np.zeros([num_edges],dtype=np.int)
+        cdouble_edge_weights = np.zeros([num_edges], dtype=np.double)
+        cdef int i
+        print("saving data to cvectors..")
         for i in range(num_edges):
-            cint_edges_from[i]=edge_list[i].first
-            cint_edges_to[i] =edge_list[i].second
-        return graph.py_Graph(num_nodes,num_edges,cint_edges_from,cint_edges_to)
-
+            cint_edges_from[i]= edge_list[i].first
+            cint_edges_to[i] = edge_list[i].second
+            #print("saving", i, "th edge weight")
+            cdouble_edge_weights[i] = edge_weights[i]
+        
+        print("saved data to cvectors")
+        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights)
 
 cdef class py_NStepReplayMem:
     cdef shared_ptr[NStepReplayMem] inner_NStepReplayMem
@@ -57,10 +67,10 @@ cdef class py_NStepReplayMem:
     cdef shared_ptr[ReplaySample] inner_ReplaySample
     #__cinit__会在__init__之前被调用
     def __cinit__(self,int memory_size):
-        '''默认构造函数，暂不调用Graph的默认构造函数，
-        默认构造函数在栈上分配的内存读写速度比较快，
-        但实际情况下网络的结构一旦变化就要重新在堆上创建对象，因此基本上栈上分配的内存不会被使用
-        除非将类的实现文件重写，加入python的调用接口，否则无法避免在堆上创建对象'''
+        '''default constructor, without calling Graph's default constructor for now.
+        The memory allocated on the stack by the default constructor is faster to read and write.
+        But in practice, once the structure of the network changes, you have to recreate the object on the heap, so basically the memory allocated on the stack will not be used
+        Unless the class implementation file is rewritten to include the python call interface, there is no way to avoid creating objects on the heap.'''
         #print('默认构造函数。')
         self.inner_NStepReplayMem = shared_ptr[NStepReplayMem](new NStepReplayMem(memory_size))
     # def __dealloc__(self):
@@ -86,6 +96,7 @@ cdef class py_NStepReplayMem:
         deref(self.inner_Graph).num_edges=g.num_edges
         deref(self.inner_Graph).edge_list=g.edge_list
         deref(self.inner_Graph).adj_list=g.adj_list
+        deref(self.inner_Graph).edge_weights=g.edge_weights
         self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(mvcenv.norm))
         deref(self.inner_MvcEnv).norm = mvcenv.norm
         deref(self.inner_MvcEnv).graph = self.inner_Graph
@@ -102,6 +113,7 @@ cdef class py_NStepReplayMem:
     def Sampling(self,int batch_size):
         # self.inner_ReplaySample = shared_ptr[ReplaySample](new ReplaySample(batch_size))
         self.inner_ReplaySample =  deref(self.inner_NStepReplayMem).Sampling(batch_size)
+        print("Step 1 of sampling from replay memory sucessful")
         result = py_ReplaySample(batch_size)
         result.inner_ReplaySample = self.inner_ReplaySample
         return result
@@ -136,24 +148,35 @@ cdef class py_NStepReplayMem:
     @property
     def memory_size(self):
         return deref(self.inner_NStepReplayMem).memory_size
-    cdef G2P(self,Graph graph1):
+    
+    cdef G2P(self, Graph graph1):
         num_nodes = graph1.num_nodes     #得到Graph对象的节点个数
         num_edges = graph1.num_edges    #得到Graph对象的连边个数
         edge_list = graph1.edge_list
+        edge_weights = graph1.edge_weights
+        
         cint_edges_from = np.zeros([num_edges],dtype=np.int)
         cint_edges_to = np.zeros([num_edges],dtype=np.int)
+        cdouble_edge_weights = np.zeros([num_edges], dtype=np.double)
+
+        cdef int i
         for i in range(num_edges):
-            cint_edges_from[i]=edge_list[i].first
-            cint_edges_to[i] =edge_list[i].second
-        return graph.py_Graph(num_nodes,num_edges,cint_edges_from,cint_edges_to)
+            cint_edges_from[i] = edge_list[i].first
+            cint_edges_to[i] = edge_list[i].second
+            cdouble_edge_weights[i] = edge_weights[i]
+        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights)
 
     def GenNetwork(self, g):    #networkx2four
+        # transforms the networkx graph object into graph object using external pyx module
+        nodes = g.nodes()
         edges = g.edges()
         if len(edges) > 0:
-            a, b = zip(*edges)
+            a, b = zip(*edges) 
             A = np.array(a)
             B = np.array(b)
+            W = np.array([g[n][m]['weight'] for n, m in zip(a, b)])
         else:
             A = np.array([0])
             B = np.array([0])
-        return graph.py_Graph(len(g.nodes()), len(edges), A, B)
+            W = np.array([0])
+        return graph.py_Graph(len(nodes), len(edges), A, B, W)

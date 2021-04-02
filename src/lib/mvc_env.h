@@ -24,18 +24,20 @@ public:
 
     int randomAction();
 
-    int betweenAction();
+    // int betweenAction();
 
     bool isTerminal();
 
 //    double getReward(double oldCcNum);
     double getReward();
 
-    double getMaxConnectedNodesNum();
+    // double getMaxConnectedNodesNum();
 
     double getRemainingCNDScore();
 
     double CcNum;
+
+    double getCurrentTourLength();
 
     void printGraph();
 

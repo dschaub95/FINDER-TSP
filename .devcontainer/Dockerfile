@@ -4,13 +4,15 @@ FROM registry.codeocean.com/codeocean/miniconda3:4.7.10-cuda10.1-cudnn7-ubuntu18
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        gcc=4:7.4.0-1ubuntu2.3 \
+RUN apt update \
+    && apt install -y --no-install-recommends \
+        build-essential \
         python-pip\
         python-setuptools=39.0.1-2 \
         python-wheel=0.30.0-0.2 \
     && rm -rf /var/lib/apt/lists/*
+RUN apt update \
+    && apt upgrade -y
 
 RUN pip install -U --no-cache-dir \
     cython==0.29.13 \
