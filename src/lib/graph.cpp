@@ -18,7 +18,7 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
     edge_list.resize(num_edges);
     adj_list.resize(num_nodes);
     //tsp change
-    printf("Clearing edge weights list\n");
+    // printf("Clearing edge weights list\n");
     edge_weights.clear();
     for (int i = 0; i < num_nodes; ++i)
         adj_list[i].clear();
@@ -30,7 +30,7 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
         edge_list[i] = std::make_pair(edges_from[i], edges_to[i]);
         edge_weights.push_back(_edge_weights[i]);
     }
-    printf("Sucessfully added %d elements to edge weights list for a graph of size %d\n", (int)edge_weights.size(), num_nodes);
+    // printf("Sucessfully added %d elements to edge weights list for a graph of size %d\n", (int)edge_weights.size(), num_nodes);
     //printf("edge_weight: %f\n", edge_weights[0]);
 }
 

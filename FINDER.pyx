@@ -413,13 +413,13 @@ class FINDER:
                     if self.env_list[i].graph.num_nodes > 0 and self.env_list[i].isTerminal():
                         n = n + 1
                         # after reaching the terminal state add all nstep transitions to the replay memory 
-                        print("adding new experience to the Replay buffer")
+                        # print("adding new experience to the Replay buffer")
                         self.nStepReplayMem.Add(self.env_list[i], n_step)
-                        print('added experience transition!')
+                        # print('added experience transition!')
                     g_sample = TrainSet.Sample()
                     self.env_list[i].s0(g_sample)
                     self.g_list[i] = self.env_list[i].graph
-                    print("added new sample to the graph list, current length:", len(self.g_list))
+                    # print("added new sample to the graph list, current length:", len(self.g_list))
             
             if n >= num_seq:
                 break
@@ -468,7 +468,7 @@ class FINDER:
         
         cdef int n_graphs = len(g_list)
         cdef int i, j, k, bsize
-        print("number of graphs for prediction:", n_graphs)
+        # print("number of graphs for prediction:", n_graphs)
         for i in range(0, n_graphs, BATCH_SIZE):
             bsize = BATCH_SIZE
             if (i + BATCH_SIZE) > n_graphs:

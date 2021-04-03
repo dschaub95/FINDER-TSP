@@ -50,14 +50,14 @@ cdef class py_ReplaySample:
         cint_edges_to = np.zeros([num_edges],dtype=np.int)
         cdouble_edge_weights = np.zeros([num_edges], dtype=np.double)
         cdef int i
-        print("saving data to cvectors..")
+        # print("saving data to cvectors..")
         for i in range(num_edges):
             cint_edges_from[i]= edge_list[i].first
             cint_edges_to[i] = edge_list[i].second
             #print("saving", i, "th edge weight")
             cdouble_edge_weights[i] = edge_weights[i]
         
-        print("saved data to cvectors")
+        # print("saved data to cvectors")
         return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights)
 
 cdef class py_NStepReplayMem:

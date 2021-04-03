@@ -136,7 +136,9 @@ double MvcEnv::getReward()
     // double reward = -(double)getCurrentTourLength()
     double reward = -(double)getRemainingCNDScore()/(orig_node_num*(orig_node_num-1)/2);
     double norm_reward = reward/orig_node_num;
-    //printf("reward: %f \n", reward);
+    // printf("reward: %f \n", reward);
+    // printf("number of nodes: %f \n", orig_node_num);
+    // printf("self calculated reward: %f \n", (orig_node_num-covered_set.size())*(orig_node_num-covered_set.size()-1)/(orig_node_num*(orig_node_num-1)));
     return norm_reward;
 }
 
@@ -153,12 +155,16 @@ double MvcEnv::getCurrentTourLength()
     }
     // more than two nodes in current tour
     
-    for (int i = 0; i < action_list.size(); ++i)
+    for (int i = 0; i <= action_list.size(); ++i)
     {   
         int high_node, low_node;
         if (i == 0)
         {
             continue;
+        }
+        else if (i == action_list.size())
+        {
+            
         }
         // check which node has higher index to determine the corresponding edge weight
         if (action_list[i] > action_list[i-1])
@@ -177,26 +183,6 @@ double MvcEnv::getCurrentTourLength()
 
         tourLength += graph->edge_weights[idx];
     }
-    /*
-    int k = 0;
-    int last_node;
-    for (std::vector<int>::iterator it = action_list.begin() ; it != action_list.end(); ++it)
-    {
-        if (k == 0)
-        {
-            last_node = *it;
-        }
-        else
-        {
-            
-            printf(*it);
-            k++;
-            last_node = *it;
-        }
-        
-        
-    }
-    */
     return tourLength;
 }
 

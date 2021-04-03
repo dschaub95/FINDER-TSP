@@ -64,9 +64,10 @@ void NStepReplayMem::Add(std::shared_ptr<MvcEnv> env,int n_step)
     for (int i = num_steps - 1; i >= 0; --i)
         if (i < num_steps - 1)
             env->sum_rewards[i] = env->sum_rewards[i + 1] + env->reward_seq[i];
-    //printf("reward_seq start = %f \n", env->reward_seq[0]);
+    printf("reward_seq start = %f \n", env->reward_seq[0]);
+    printf("reward_seq end = %f \n", env->reward_seq[num_steps-1]);
     //printf("reward_sum end = %f \n", env->sum_rewards[num_steps-1]);
-    //printf("reward_sum start = %f \n", env->sum_rewards[0]);
+    // printf("reward_sum start = %f \n", env->sum_rewards[0]);
     
     // add all nstep transitions for that sample
     for (int i = 0; i < num_steps; ++i)
