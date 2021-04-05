@@ -24,7 +24,7 @@ public:
 
     std::vector<double> Betweenness(std::shared_ptr<Graph> _g);
 
-    std::vector<double> Betweenness(std::vector< std::vector <int> > adj_list);
+    // std::vector<double> Betweenness(std::vector< std::vector <int> > adj_list);
 
     std::vector<double> MaxWccSzList;
 

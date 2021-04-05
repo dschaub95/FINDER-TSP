@@ -182,7 +182,7 @@ double MvcEnv::getCurrentTourLength()
     }
     // more than two nodes in current tour
     
-    for (int i = 0; i <= action_list.size()-1; ++i)
+    for (int i = 0; i < action_list.size(); ++i)
     {   
         if (i == 0)
         {

@@ -20,7 +20,7 @@ public:
 
     void stepWithoutReward(int a);
 
-    std::vector<double> Betweenness(std::vector< std::vector <int> > adj_list);
+    // std::vector<double> Betweenness(std::vector< std::vector <int> > adj_list);
 
     int randomAction();
 

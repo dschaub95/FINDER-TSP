@@ -12,7 +12,7 @@
 
 Utils::Utils()
 {
-MaxWccSzList.clear();
+    MaxWccSzList.clear();
 }
 
 
@@ -145,6 +145,7 @@ double Utils::getRobustness(std::shared_ptr<Graph> graph, std::vector<int> solut
 
 
 int Utils::getMxWccSz(std::shared_ptr<Graph> graph)
+// calculates 
 {
     assert(graph);
     Disjoint_Set disjoint_Set =  Disjoint_Set(graph->num_nodes);
