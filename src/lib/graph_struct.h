@@ -27,6 +27,7 @@ public:
 		 * @param[in]  head_id  The linked list identifier
 		 * @param[in]  content  The content to be append
 		 */
+		/**
 		void AddEntry(int head_id, T content);
 		
 		/**

@@ -107,7 +107,7 @@ class FINDER:
         # [batch_size, node_cnt]
         self.subgsum_param = tf.sparse_placeholder(tf.float32, name="subgsum_param")
         # [batch_size,1]
-        self.target = tf.placeholder(tf.float32, [BATCH_SIZE,1], name="target")
+        self.target = tf.placeholder(tf.float32, [BATCH_SIZE,1], name="target") # DQN target
         # [batch_size, aux_dim]
         self.aux_input = tf.placeholder(tf.float32, name="aux_input")
 

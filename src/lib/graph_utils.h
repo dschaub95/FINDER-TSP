@@ -18,9 +18,9 @@ public:
 
     void deleteNode(std::vector<std::vector<int> > &adjListGraph, int node);
 
-     void recoverAddNode(const std::vector<std::vector<int> > &backupCompletedAdjListGraph, std::vector<bool>& backupAllVex, std::vector<std::vector<int> > &adjListGraph, int node, Disjoint_Set &unionSet);
+    void recoverAddNode(const std::vector<std::vector<int> > &backupCompletedAdjListGraph, std::vector<bool>& backupAllVex, std::vector<std::vector<int> > &adjListGraph, int node, Disjoint_Set &unionSet);
 
-     void addEdge(std::vector<std::vector<int> > &adjListGraph, int node0, int node1);
+    void addEdge(std::vector<std::vector<int> > &adjListGraph, int node0, int node1);
 
 
 };

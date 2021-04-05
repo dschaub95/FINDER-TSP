@@ -3,6 +3,7 @@
 from FINDER import FINDER
 
 def main():
+    print("Starting FINDER...")
     dqn = FINDER()
     dqn.Train()
 

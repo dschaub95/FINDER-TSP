@@ -31,7 +31,7 @@ cdef class py_MvcEnv:
     def step(self,int a):
         return deref(self.inner_MvcEnv).step(a)
 
-    def stepWithoutReward(self,int a):
+    def stepWithoutReward(self, int a):
         deref(self.inner_MvcEnv).stepWithoutReward(a)
 
     def randomAction(self):
@@ -51,6 +51,12 @@ cdef class py_MvcEnv:
 
     def getRemainingCNDScore(self):
         return deref(self.inner_MvcEnv).getRemainingCNDScore()
+
+    def getTourDifference(self):
+        return deref(self.inner_MvcEnv).getTourDifference()
+
+    def getEdgeWeightIndex(self, int start_node, int end_node):
+        return deref(self.inner_MvcEnv).getEdgeWeightIndex(start_node, end_node)
 
     @property
     def norm(self):

@@ -109,7 +109,7 @@ double Utils::getRobustness(std::shared_ptr<Graph> graph, std::vector<int> solut
     MaxWccSzList.clear();
     std::vector<std::vector<int>> backupCompletedAdjListGraph = graph->adj_list;
     std::vector<std::vector<int>> current_adj_list;
-    std::shared_ptr<GraphUtil> graphutil =std::shared_ptr<GraphUtil>(new GraphUtil());
+    std::shared_ptr<GraphUtil> graphutil = std::shared_ptr<GraphUtil>(new GraphUtil());
     Disjoint_Set disjoint_Set =  Disjoint_Set(graph->num_nodes);
     std::vector<bool> backupAllVex(graph->num_nodes, false); // initialized as false, length of num_nodes
     double totalMaxNum = 0.0;

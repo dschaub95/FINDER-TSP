@@ -222,18 +222,18 @@ void PrepareBatchGraph::SetupPredAll(std::vector<int> idxes,
 
 
 
-std::vector<std::shared_ptr<sparseMatrix>> n2n_construct(GraphStruct* graph,int aggregatorID)
+std::vector<std::shared_ptr<sparseMatrix>> n2n_construct(GraphStruct* graph, int aggregatorID)
 {
     //aggregatorID = 0 sum
     //aggregatorID = 1 mean
     //aggregatorID = 2 GCN
     std::vector<std::shared_ptr<sparseMatrix>> resultList;
     resultList.resize(2);
-    std::shared_ptr<sparseMatrix> result =std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    std::shared_ptr<sparseMatrix> result = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     result->rowNum = graph->num_nodes;
     result->colNum = graph->num_nodes;
 
-    std::shared_ptr<sparseMatrix> result_laplacian= std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    std::shared_ptr<sparseMatrix> result_laplacian = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     result_laplacian->rowNum = graph->num_nodes;
     result_laplacian->colNum = graph->num_nodes;
 

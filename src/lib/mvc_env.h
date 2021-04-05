@@ -28,7 +28,8 @@ public:
 
     bool isTerminal();
 
-//    double getReward(double oldCcNum);
+    // double getReward(double oldCcNum);
+    
     double getReward();
 
     // double getMaxConnectedNodesNum();
@@ -38,6 +39,10 @@ public:
     double CcNum;
 
     double getCurrentTourLength();
+
+    double getTourDifference();
+
+    int getEdgeWeightIndex(int start_node, int end_node);
 
     void printGraph();
 

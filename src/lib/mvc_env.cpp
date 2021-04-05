@@ -133,8 +133,8 @@ double MvcEnv::getReward()
 {
     double orig_node_num = (double) graph->num_nodes;
     // TSP reward
-    // double reward = -(double)getCurrentTourLength()
-    double reward = -(double)getRemainingCNDScore()/(orig_node_num*(orig_node_num-1)/2);
+    double reward = -(double)getTourDifference();
+    // double reward = -(double)getRemainingCNDScore()/(orig_node_num*(orig_node_num-1)/2);
     double norm_reward = reward/orig_node_num;
     // printf("reward: %f \n", reward);
     // printf("number of nodes: %f \n", orig_node_num);
@@ -142,6 +142,33 @@ double MvcEnv::getReward()
     return norm_reward;
 }
 
+double MvcEnv::getTourDifference()
+{
+    double previousLength = 0.0;
+    double currentLength = 0.0;
+    
+    if (action_list.size() > 2)
+    {
+        // calc length of the last part of the current tour, ranging from second last node to the start node
+        int idx_1 = getEdgeWeightIndex(action_list[action_list.size()-1], action_list[0]);
+        int idx_2 = getEdgeWeightIndex(action_list[action_list.size()-2], action_list[action_list.size()-1]);
+        currentLength += graph->edge_weights[idx_1];
+        currentLength += graph->edge_weights[idx_2];
+
+        // calc length of the last part of the previous tour
+        int idx = getEdgeWeightIndex(action_list[action_list.size()-2], action_list[0]);
+        previousLength += graph->edge_weights[idx];
+    }
+    else if (action_list.size() == 2)
+    {
+        // previous tour contains only one node
+        int idx_1 = getEdgeWeightIndex(action_list[action_list.size()-1], action_list[0]);
+        int idx_2 = getEdgeWeightIndex(action_list[action_list.size()-2], action_list[action_list.size()-1]);
+        currentLength += graph->edge_weights[idx_1];
+        currentLength += graph->edge_weights[idx_2];
+    }
+    return currentLength - previousLength;
+}
 
 double MvcEnv::getCurrentTourLength()
 {
@@ -155,35 +182,42 @@ double MvcEnv::getCurrentTourLength()
     }
     // more than two nodes in current tour
     
-    for (int i = 0; i <= action_list.size(); ++i)
+    for (int i = 0; i <= action_list.size()-1; ++i)
     {   
-        int high_node, low_node;
         if (i == 0)
         {
             continue;
         }
-        else if (i == action_list.size())
-        {
-            
-        }
-        // check which node has higher index to determine the corresponding edge weight
-        if (action_list[i] > action_list[i-1])
-        {
-            high_node = action_list[i];
-            low_node = action_list[i-1];
-        }
-        else
-        {
-            high_node = action_list[i-1];
-            low_node = action_list[i];
-        }
-        // calculate index..
-        int start_idx = low_node*(graph->num_nodes) - (int)(low_node*(low_node + 1)/2);
-        int idx = start_idx + high_node - low_node - 1;
-
+        int idx = getEdgeWeightIndex(action_list[i-1], action_list[i]);
         tourLength += graph->edge_weights[idx];
     }
+    // add path from last to first node
+    int last_idx = getEdgeWeightIndex(action_list[action_list.size()-1], action_list[0]);
+    tourLength += graph->edge_weights[last_idx];
     return tourLength;
+}
+
+int MvcEnv::getEdgeWeightIndex(int start_node, int end_node)
+// order of the nodes in undirected complete case irelevant
+{
+    int high_node, low_node;
+    // check which node has higher index to determine the corresponding edge weight
+    if (start_node > end_node)
+    {
+        high_node = start_node;
+        low_node = end_node;
+    }
+    else
+    {
+        high_node = end_node;
+        low_node = start_node;
+    }
+    // calculate index..
+    int start_idx = low_node*(graph->num_nodes) - (int)(low_node*(low_node + 1)/2);
+    // printf("Edge (%d, %d) \n", start_node, end_node);
+    // printf("Number of nodes: %d\n", graph->num_nodes);
+    // printf("Result edge weight index: %d\n", start_idx + high_node - low_node - 1);
+    return start_idx + high_node - low_node - 1;
 }
 
 
