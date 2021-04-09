@@ -53,6 +53,7 @@ GraphStruct::GraphStruct()
 	out_edges = new LinkedTable< std::pair<int, int> >();
     in_edges = new LinkedTable< std::pair<int, int> >();
 	subgraph = new LinkedTable< int >();
+	edge_weights.clear();
     edge_list.clear();
 }
 

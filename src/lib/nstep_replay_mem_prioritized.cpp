@@ -1,5 +1,4 @@
 #include "nstep_replay_mem_prioritized.h"
-#include "i_env.h"
 #include <cassert>
 #include <algorithm>
 #include <time.h>

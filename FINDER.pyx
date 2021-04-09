@@ -21,6 +21,7 @@ import nstep_replay_mem
 import nstep_replay_mem_prioritized
 import mvc_env
 import utils
+import DQN_builder
 import scipy.linalg as linalg
 import os
 from itertools import combinations 
@@ -110,6 +111,9 @@ class FINDER:
         self.target = tf.placeholder(tf.float32, [BATCH_SIZE,1], name="target") # DQN target
         # [batch_size, aux_dim]
         self.aux_input = tf.placeholder(tf.float32, name="aux_input")
+        
+        # [node_cnt, 4], per node [(bool)is not in current path, node x pos, node y pos, sum of edge weights]
+        self.node_input = tf.placeholder(tf.float32, name="node_input")
 
         #[batch_size, 1]
         if self.IsPrioritizedSampling:
@@ -117,11 +121,11 @@ class FINDER:
 
 
         # init Q network
-        self.loss,self.trainStep,self.q_pred, self.q_on_all,self.Q_param_list = self.BuildNet() #[loss,trainStep,q_pred, q_on_all, ...]
+        self.loss,self.trainStep,self.q_pred, self.q_on_all, self.Q_param_list = self.BuildNet() #[loss,trainStep,q_pred, q_on_all, ...]
         #init Target Q Network
-        self.lossT,self.trainStepT,self.q_predT, self.q_on_allT,self.Q_param_listT = self.BuildNet()
+        self.lossT,self.trainStepT,self.q_predT, self.q_on_allT, self.Q_param_listT = self.BuildNet()
         #takesnapsnot
-        self.copyTargetQNetworkOperation = [a.assign(b) for a,b in zip(self.Q_param_listT,self.Q_param_list)]
+        self.copyTargetQNetworkOperation = [a.assign(b) for a,b in zip(self.Q_param_listT, self.Q_param_list)]
 
 
         self.UpdateTargetQNetwork = tf.group(*self.copyTargetQNetworkOperation)
@@ -133,7 +137,7 @@ class FINDER:
                                 intra_op_parallelism_threads=100,
                                 log_device_placement=False)
         config.gpu_options.allow_growth = True
-        self.session = tf.Session(config = config)
+        self.session = tf.Session(config=config)
 
         # self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
         self.session.run(tf.global_variables_initializer())
@@ -235,13 +239,16 @@ class FINDER:
 
                 #[[node_cnt, embed_dim] [node_cnt, embed_dim]] = [node_cnt, 2*embed_dim], return tensed matrix
                 merged_linear = tf.concat([node_linear, cur_message_layer_linear], 1)
+                
                 #[node_cnt, 2*embed_dim]*[2*embed_dim, embed_dim] = [node_cnt, embed_dim]
                 cur_message_layer = tf.nn.relu(tf.matmul(merged_linear, p_node_conv3))
 
                 #[batch_size, embed_dim] * [embed_dim, embed_dim] = [batch_size, embed_dim], dense
                 y_cur_message_layer_linear = tf.matmul(tf.cast(y_cur_message_layer, tf.float32), p_node_conv2)
+                
                 #[[batch_size, embed_dim] [batch_size, embed_dim]] = [batch_size, 2*embed_dim], return tensed matrix
                 y_merged_linear = tf.concat([y_node_linear, y_cur_message_layer_linear], 1)
+                
                 #[batch_size, 2*embed_dim]*[2*embed_dim, embed_dim] = [batch_size, embed_dim]
                 y_cur_message_layer = tf.nn.relu(tf.matmul(y_merged_linear, p_node_conv3))
 
@@ -250,12 +257,12 @@ class FINDER:
 
         # self.node_embedding = cur_message_layer
         #[batch_size, node_cnt] * [node_cnt, embed_dim] = [batch_size, embed_dim], dense
-      #  y_potential = tf.sparse_tensor_dense_matmul(tf.cast(self.subgsum_param,tf.float32), cur_message_layer)
+        # y_potential = tf.sparse_tensor_dense_matmul(tf.cast(self.subgsum_param,tf.float32), cur_message_layer)
         y_potential = y_cur_message_layer
         #[batch_size, node_cnt] * [node_cnt, embed_dim] = [batch_size, embed_dim]
         action_embed = tf.sparse_tensor_dense_matmul(tf.cast(self.action_select, tf.float32), cur_message_layer)
 
-     #   embed_s_a = tf.concat([action_embed,y_potential],1)
+        # embed_s_a = tf.concat([action_embed,y_potential],1)
 
          # # [batch_size, embed_dim, embed_dim]
         temp = tf.matmul(tf.expand_dims(action_embed, axis=2),tf.expand_dims(y_potential, axis=1))
@@ -374,7 +381,7 @@ class FINDER:
         self.ngraph_test = 0
         self.TestSet.Clear()
 
-    def InsertGraph(self,g,is_test):
+    def InsertGraph(self, g, is_test):
         cdef int t
         if is_test:
             t = self.ngraph_test
@@ -409,32 +416,43 @@ class FINDER:
         # num_seq is the number of full sequences starting at an initial state until termination
         while n < num_seq:
             for i in range(num_env):
+                # check whether terminal state is reached, if so add the graph to the graph list
+                print("Checking for terminal state")
                 if self.env_list[i].graph.num_nodes == 0 or self.env_list[i].isTerminal():
+                    print("Checked for terminal state")
                     if self.env_list[i].graph.num_nodes > 0 and self.env_list[i].isTerminal():
                         n = n + 1
                         # after reaching the terminal state add all nstep transitions to the replay memory 
                         # print("adding new experience to the Replay buffer")
                         self.nStepReplayMem.Add(self.env_list[i], n_step)
                         # print('added experience transition!')
+                    # print("Sampling new graph..")
                     g_sample = TrainSet.Sample()
                     self.env_list[i].s0(g_sample)
                     self.g_list[i] = self.env_list[i].graph
                     # print("added new sample to the graph list, current length:", len(self.g_list))
-            
+            # print("Checked for terminal state")    
             if n >= num_seq:
                 break
             Random = False
             if random.uniform(0,1) >= eps:
+                print("Making prediction")
                 pred = self.PredictWithCurrentQNet(self.g_list, [env.action_list for env in self.env_list])
             else:
                 Random = True
 
             for i in range(num_env):
                 if (Random):
+                    # print("Taking random action")
                     a_t = self.env_list[i].randomAction()
                 else:
                     a_t = self.argMax(pred[i])
+                print("Making step")
                 self.env_list[i].step(a_t)
+            # print("Action lists:", [env.action_list for env in self.env_list])
+            # print("covered set:", [env.covered_set for env in self.env_list])
+            # print("reward sequence:", [env.reward_seq for env in self.env_list])
+            # print("Graph details:", self.g_list[0].num_nodes)
     #pass
     def PlayGame(self, int n_traj, double eps):
         print("Playing game!")
@@ -443,12 +461,16 @@ class FINDER:
 
     def SetupTrain(self, idxes, g_list, covered, actions, target):
         self.m_y = target
+        
         self.inputs['target'] = self.m_y
+        # print("Targets:", self.inputs['target'])
+        
         prepareBatchGraph = PrepareBatchGraph.py_PrepareBatchGraph(aggregatorID)
         prepareBatchGraph.SetupTrain(idxes, g_list, covered, actions)
         self.inputs['action_select'] = prepareBatchGraph.act_select
         self.inputs['rep_global'] = prepareBatchGraph.rep_global
         self.inputs['n2nsum_param'] = prepareBatchGraph.n2nsum_param
+        # print("n2nsum_param:", self.inputs['n2nsum_param'])
         self.inputs['laplacian_param'] = prepareBatchGraph.laplacian_param
         self.inputs['subgsum_param'] = prepareBatchGraph.subgsum_param
         self.inputs['aux_input'] = prepareBatchGraph.aux_feat
@@ -459,17 +481,19 @@ class FINDER:
         prepareBatchGraph.SetupPredAll(idxes, g_list, covered)
         self.inputs['rep_global'] = prepareBatchGraph.rep_global
         self.inputs['n2nsum_param'] = prepareBatchGraph.n2nsum_param
+        print("n2nsum_param:", self.inputs['n2nsum_param'])
         # self.inputs['laplacian_param'] = prepareBatchGraph.laplacian_param
         self.inputs['subgsum_param'] = prepareBatchGraph.subgsum_param
         self.inputs['aux_input'] = prepareBatchGraph.aux_feat
         return prepareBatchGraph.idx_map_list
 
-    def Predict(self, g_list , covered, isSnapShot):
+    def Predict(self, g_list, covered, isSnapShot):
         
         cdef int n_graphs = len(g_list)
         cdef int i, j, k, bsize
         # print("number of graphs for prediction:", n_graphs)
         for i in range(0, n_graphs, BATCH_SIZE):
+            # makes sure that th indices start at zero for the first batch and go so on for 
             bsize = BATCH_SIZE
             if (i + BATCH_SIZE) > n_graphs:
                 bsize = n_graphs - i
@@ -477,21 +501,20 @@ class FINDER:
             for j in range(i, i + bsize):
                 batch_idxes[j - i] = j
             batch_idxes = np.int32(batch_idxes)
-            print("Setting up PredAll")
+            # print("Setting up PredAll")
             idx_map_list = self.SetupPredAll(batch_idxes, g_list, covered)
             my_dict = {}
             my_dict[self.rep_global] = self.inputs['rep_global']
             my_dict[self.n2nsum_param] = self.inputs['n2nsum_param']
             my_dict[self.subgsum_param] = self.inputs['subgsum_param']
             my_dict[self.aux_input] = np.array(self.inputs['aux_input'])
-
-            print("running training session")
+            # print("running training session")
             if isSnapShot:
                 result = self.session.run([self.q_on_allT], feed_dict = my_dict)
-                print("sucessfully ran training session")
+                # print("sucessfully ran training session")
             else:
                 result = self.session.run([self.q_on_all], feed_dict = my_dict)
-                print("sucessfully ran training session")
+                # print("sucessfully ran training session")
             raw_output = result[0]
             pos = 0
             pred = []
@@ -511,23 +534,24 @@ class FINDER:
         return pred
 
     def PredictWithCurrentQNet(self, g_list, covered):
-        print("predicting with current QNet...")
+        # print("predicting with current QNet...")
         result = self.Predict(g_list, covered, isSnapShot=False)
         return result
 
     def PredictWithSnapshot(self, g_list, covered):
-        print("predicting with snapshot...")
+        # print("predicting with snapshot...")
         result = self.Predict(g_list, covered, isSnapShot=True)
         return result
     #pass
     def TakeSnapShot(self):
-       print("Taking snapshot")
-       self.session.run(self.UpdateTargetQNetwork)
+        # print("Taking snapshot")
+        self.session.run(self.UpdateTargetQNetwork)
 
     def Fit(self):
+        # Main function for fitting, uses fit() as sub function
         # obtain mini batch sample
         sample = self.nStepReplayMem.Sampling(BATCH_SIZE)
-        print("mini batch sample obtained")
+        # print("mini batch sample obtained")
         ### start: calculate target
         ness = False
         cdef int i
@@ -535,7 +559,7 @@ class FINDER:
             if (not sample.list_term[i]):
                 ness = True
                 break
-        print("checked whether mini batch is containing at least one non terminal state sample, it evaluated to:", ness)
+        # print("checked whether mini batch is containing at least one non terminal state sample, it evaluated to:", ness)
         if ness:
             if self.IsDoubleDQN:
                 # first make prediction with current Q Net for all possible actions and graphs in batch
@@ -547,9 +571,10 @@ class FINDER:
                 list_pred = [a[self.argMax(b)] for a, b in zip(double_list_predT, double_list_pred)]
             else:
                 # just use older version to 
-                print("predicting with snapshot..")
+                
+                # print("predicting with snapshot..")
                 list_pred = self.PredictWithSnapshot(sample.g_list, sample.list_s_primes)
-                print("sucessfully predicted with snapshot")
+                # print("sucessfully predicted with snapshot")
 
 
         list_target = np.zeros([BATCH_SIZE, 1])
@@ -604,12 +629,13 @@ class FINDER:
         return loss / len(g_list)
 
 
-    def fit(self,g_list,covered,actions,list_target):
-        # 
+    def fit(self, g_list, covered, actions, list_target):
+        # sub function for fitting the net
         cdef double loss = 0.0
         cdef int n_graphs = len(g_list)
         cdef int i, j, bsize
-        for i in range(0,n_graphs,BATCH_SIZE):
+        print("Fitting in total:", n_graphs, "graphs.\n")
+        for i in range(0, n_graphs, BATCH_SIZE):
             bsize = BATCH_SIZE
             if (i + BATCH_SIZE) > n_graphs:
                 bsize = n_graphs - i
@@ -630,7 +656,7 @@ class FINDER:
             my_dict[self.aux_input] = np.array(self.inputs['aux_input'])
             my_dict[self.target] = self.inputs['target']
 
-            result = self.session.run([self.loss,self.trainStep],feed_dict=my_dict)
+            result = self.session.run([self.loss,self.trainStep], feed_dict=my_dict)
             loss += result[0]*bsize
         return loss / len(g_list)
 

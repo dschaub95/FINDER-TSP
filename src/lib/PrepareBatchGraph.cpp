@@ -22,10 +22,10 @@ sparseMatrix::~sparseMatrix()
 
 PrepareBatchGraph::~PrepareBatchGraph()
 {
-    act_select =nullptr;
-    rep_global =nullptr;
-    n2nsum_param =nullptr;
-    subgsum_param =nullptr;
+    act_select = nullptr;
+    rep_global = nullptr;
+    n2nsum_param = nullptr;
+    subgsum_param = nullptr;
     laplacian_param = nullptr;
     idx_map_list.clear();
     aux_feat.clear();
@@ -160,6 +160,13 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
             if (idx_map[j] < 0)
                 continue;
             idx_map[j] = t;
+            
+            // change in case of simple node weights
+            // std::vector<double> temp_node_feat;
+            // temp_node_feat.push_back(g->nodes_weight[j]);
+            // temp_node_feat.push_back(1.0);
+            // node_feat.push_back(temp_node_feat);
+
             graph.AddNode(i, node_cnt + t);
             if (!actions)
             {
@@ -194,7 +201,7 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
     }
     assert(node_cnt == (int)graph.num_nodes);
 
-    auto result_list = n2n_construct(&graph,aggregatorID);
+    auto result_list = n2n_construct(&graph, aggregatorID);
     n2nsum_param = result_list[0];
     laplacian_param = result_list[1];
     subgsum_param = subg_construct(&graph,subgraph_id_span);
@@ -223,6 +230,7 @@ void PrepareBatchGraph::SetupPredAll(std::vector<int> idxes,
 
 
 std::vector<std::shared_ptr<sparseMatrix>> n2n_construct(GraphStruct* graph, int aggregatorID)
+// defines aggregation of nodefeatures
 {
     //aggregatorID = 0 sum
     //aggregatorID = 1 mean
@@ -239,12 +247,15 @@ std::vector<std::shared_ptr<sparseMatrix>> n2n_construct(GraphStruct* graph, int
 
 	for (int i = 0; i < (int)graph->num_nodes; ++i)
 	{
-		auto& list = graph->in_edges->head[i];
+		// list of all incoming edges of the corresponding node
+        auto& list = graph->in_edges->head[i];
 
         if (list.size() > 0)
         {
+            // push back degree of the node
             result_laplacian->value.push_back(list.size());
-		    result_laplacian->rowIndex.push_back(i);
+		    
+            result_laplacian->rowIndex.push_back(i);
 		    result_laplacian->colIndex.push_back(i);
         }
 
@@ -273,7 +284,9 @@ std::vector<std::shared_ptr<sparseMatrix>> n2n_construct(GraphStruct* graph, int
 		          break;
 		    }
 
+            // push back the node index
             result->rowIndex.push_back(i);
+            // and the neighbour node index corresponding to the jth incoming edge for node i
             result->colIndex.push_back(list[j].second);
 
             result_laplacian->value.push_back(-1.0);
@@ -288,13 +301,14 @@ std::vector<std::shared_ptr<sparseMatrix>> n2n_construct(GraphStruct* graph, int
 }
 
 std::shared_ptr<sparseMatrix> e2n_construct(GraphStruct* graph)
+// not used in the current code
 {
-    std::shared_ptr<sparseMatrix> result =std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    std::shared_ptr<sparseMatrix> result = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     result->rowNum = graph->num_nodes;
     result->colNum = graph->num_edges;
 	for (int i = 0; i < (int)graph->num_nodes; ++i)
 	{
-		auto& list = graph->in_edges->head[i];
+        auto& list = graph->in_edges->head[i];
 		for (int j = 0; j < (int)list.size(); ++j)
 		{
             result->value.push_back(1.0);
@@ -306,6 +320,7 @@ std::shared_ptr<sparseMatrix> e2n_construct(GraphStruct* graph)
 }
 
 std::shared_ptr<sparseMatrix> n2e_construct(GraphStruct* graph)
+// not used in current code
 {
     std::shared_ptr<sparseMatrix> result =std::shared_ptr<sparseMatrix>(new sparseMatrix());
     result->rowNum = graph->num_edges;
@@ -321,6 +336,7 @@ std::shared_ptr<sparseMatrix> n2e_construct(GraphStruct* graph)
 }
 
 std::shared_ptr<sparseMatrix> e2e_construct(GraphStruct* graph)
+// not used in current code
 {
     std::shared_ptr<sparseMatrix> result =std::shared_ptr<sparseMatrix>(new sparseMatrix());
     result->rowNum = graph->num_edges;

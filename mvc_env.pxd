@@ -19,6 +19,7 @@ cdef extern from "./src/lib/mvc_env.h":
         # double getMaxConnectedNodesNum()except+
         double getRemainingCNDScore()except+
         double getTourDifference()except+
+        double getLastTourDifference()except+
         int getEdgeWeightIndex(int start_node, int end_node)except+
         double norm
         double CcNum

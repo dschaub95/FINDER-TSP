@@ -20,19 +20,11 @@ public:
 
     void stepWithoutReward(int a);
 
-    // std::vector<double> Betweenness(std::vector< std::vector <int> > adj_list);
-
     int randomAction();
 
-    // int betweenAction();
-
     bool isTerminal();
-
-    // double getReward(double oldCcNum);
     
     double getReward();
-
-    // double getMaxConnectedNodesNum();
 
     double getRemainingCNDScore();
 
@@ -41,6 +33,8 @@ public:
     double getCurrentTourLength();
 
     double getTourDifference();
+
+    double getLastTourDifference();
 
     int getEdgeWeightIndex(int start_node, int end_node);
 

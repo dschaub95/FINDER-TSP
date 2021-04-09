@@ -22,7 +22,7 @@ cdef class py_ReplaySample:
         print("obtaining graph list...")
         for graphPtr in deref(self.inner_ReplaySample).g_list:
             result.append(self.G2P(deref(graphPtr)))
-            print("sucessfully appended graph")
+            # print("sucessfully appended graph")
         return  result
     @property
     def list_st(self):
@@ -113,7 +113,7 @@ cdef class py_NStepReplayMem:
     def Sampling(self,int batch_size):
         # self.inner_ReplaySample = shared_ptr[ReplaySample](new ReplaySample(batch_size))
         self.inner_ReplaySample =  deref(self.inner_NStepReplayMem).Sampling(batch_size)
-        print("Step 1 of sampling from replay memory sucessful")
+        # print("Step 1 of sampling from replay memory sucessful")
         result = py_ReplaySample(batch_size)
         result.inner_ReplaySample = self.inner_ReplaySample
         return result

@@ -55,6 +55,9 @@ cdef class py_MvcEnv:
     def getTourDifference(self):
         return deref(self.inner_MvcEnv).getTourDifference()
 
+    def getLastTourDifference(self):
+        return deref(self.inner_MvcEnv).getLastTourDifference()
+
     def getEdgeWeightIndex(self, int start_node, int end_node):
         return deref(self.inner_MvcEnv).getEdgeWeightIndex(start_node, end_node)
 

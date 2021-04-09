@@ -114,6 +114,8 @@ public:
 	 */
 	std::vector< std::pair<int, int> > edge_list;    
 
+
+	std::vector<double> edge_weights;
 	/**
 	 * total # nodes 
 	 */
