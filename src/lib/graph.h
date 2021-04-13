@@ -17,8 +17,7 @@ public:
     std::vector< std::vector< int > > adj_list;
     std::vector< std::pair<int, int> > edge_list;
     std::vector<double> edge_weights;
-    double getTwoRankNeighborsRatio(std::vector<int> covered);
-
+    double getEdgeWeight(int start_node, int end_node);
 };
 
 class GSet

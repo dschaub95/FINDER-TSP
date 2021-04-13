@@ -12,6 +12,15 @@ Graph::Graph() : num_nodes(0), num_edges(0)
     edge_weights.clear();
 }
 
+Graph::~Graph()
+{
+    edge_list.clear();
+    adj_list.clear();
+    edge_weights.clear();
+    num_nodes = 0;
+    num_edges = 0;
+}
+
 Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, const int* edges_to, const double* _edge_weights)
         : num_nodes(_num_nodes), num_edges(_num_edges)
 {
@@ -34,36 +43,28 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
     //printf("edge_weight: %f\n", edge_weights[0]);
 }
 
-Graph::~Graph()
+double Graph::getEdgeWeight(int start_node, int end_node)
+// order of the nodes in undirected complete case irelevant
 {
-    edge_list.clear();
-    adj_list.clear();
-    edge_weights.clear();
-    num_nodes = 0;
-    num_edges = 0;
-}
-
-double Graph::getTwoRankNeighborsRatio(std::vector<int> covered)
-{
-    std::set<int> tempSet;
-    for(int i =0;i<(int)covered.size();++i){
-        tempSet.insert(covered[i]);
+    int high_node, low_node;
+    // check which node has higher index to determine the corresponding edge weight
+    if (start_node > end_node)
+    {
+        high_node = start_node;
+        low_node = end_node;
     }
-    double sum  = 0;
-    for(int i =0;i<num_nodes;++i){
-        if(tempSet.count(i)==0){
-        for(int j=i+1;j<num_nodes;++j){
-        if(tempSet.count(j)==0){
-            std::vector<int> v3;
-            std::set_intersection(adj_list[i].begin(),adj_list[i].end(),adj_list[j].begin(),adj_list[j].end(),std::inserter(v3,v3.begin()));
-            if(v3.size()>0){
-                sum += 1.0;
-            }
-        }
-        }
-        }
+    else
+    {
+        high_node = end_node;
+        low_node = start_node;
     }
-    return sum;
+    // calculate index..
+    int start_idx = low_node*(num_nodes) - (int)(low_node*(low_node + 1)/2);
+    // printf("Edge (%d, %d) \n", start_node, end_node);
+    // printf("Number of nodes: %d\n", num_nodes);
+    // printf("Result edge weight index: %d\n", start_idx + high_node - low_node - 1);
+    // printf("Result edge weight: %f\n", edge_weights[start_idx + high_node - low_node - 1]);
+    return edge_weights[start_idx + high_node - low_node - 1];
 }
 
 

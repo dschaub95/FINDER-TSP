@@ -39,7 +39,7 @@ cdef class py_PrepareBatchGraph:
     cdef shared_ptr[PrepareBatchGraph] inner_PrepareBatchGraph
     cdef sparseMatrix matrix
     def __cinit__(self,aggregatorID):
-        self.inner_PrepareBatchGraph =shared_ptr[PrepareBatchGraph](new PrepareBatchGraph(aggregatorID))
+        self.inner_PrepareBatchGraph = shared_ptr[PrepareBatchGraph](new PrepareBatchGraph(aggregatorID))
     # def __dealloc__(self):
     #     if self.inner_PrepareBatchGraph != NULL:
     #         self.inner_PrepareBatchGraph.reset()
@@ -61,7 +61,7 @@ cdef class py_PrepareBatchGraph:
         cdef int i
         for i in range(len(actions)):
             refint[i] = actions[i]
-        deref(self.inner_PrepareBatchGraph).SetupTrain(idxes,inner_glist,covered,refint)
+        deref(self.inner_PrepareBatchGraph).SetupTrain(idxes, inner_glist, covered, refint)
         free(refint)
 
     def SetupPredAll(self,idxes,g_list,covered):
@@ -108,6 +108,11 @@ cdef class py_PrepareBatchGraph:
     @property
     def aux_feat(self):
         return deref(self.inner_PrepareBatchGraph).aux_feat
+
+    @property
+    def node_feat(self):
+        return deref(self.inner_PrepareBatchGraph).node_feat
+
     @property
     def aggregatorID(self):
         return deref(self.inner_PrepareBatchGraph).aggregatorID

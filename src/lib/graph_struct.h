@@ -77,7 +77,9 @@ public:
 	 * @param[in]  x     edge start
 	 * @param[in]  y     edge end
 	 */
-	void AddEdge(int idx, int x, int y);
+	void AddEdge(int idx, int x, int y, double weight);
+
+	void AddEdgeweight(int idx, int x, int y);
 
 	/**
 	 * @brief      Add a node to the graph
@@ -94,6 +96,8 @@ public:
 	 * @param[in]  _num_nodes     The number of nodes
 	 */
 	void Resize(unsigned _num_subgraph, unsigned _num_nodes = 0);
+
+
 	
 	/**
 	 * adjacent list representation; stores out going edges of a node
@@ -113,7 +117,6 @@ public:
 	 * edge list ({x->y}), where the position in the edge_list corresponds to the edge index
 	 */
 	std::vector< std::pair<int, int> > edge_list;    
-
 
 	std::vector<double> edge_weights;
 	/**

@@ -11,6 +11,7 @@ cdef extern from "./src/lib/graph.h":
     cdef cppclass Graph:
         Graph()except+
         Graph(const int _num_nodes, const int _num_edges, const int* edges_from, const int* edges_to, const double* _edge_weights) except+
+        int getEdgeWeight(int start_node, int end_node)except+
         int num_nodes
         int num_edges
         vector[vector[int]] adj_list

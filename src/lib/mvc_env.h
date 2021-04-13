@@ -36,8 +36,6 @@ public:
 
     double getLastTourDifference();
 
-    int getEdgeWeightIndex(int start_node, int end_node);
-
     void printGraph();
 
     double norm;

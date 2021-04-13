@@ -11,8 +11,8 @@ cdef class py_GraphStruct:
     #     if self.inner_GraphStruct != NULL:
     #         self.inner_GraphStruct.reset()
     #         gc.collect()
-    def AddEdge(self,int idx, int x, int y):
-        deref(self.inner_GraphStruct).AddEdge(idx,x,y)
+    def AddEdge(self,int idx, int x, int y, double weight):
+        deref(self.inner_GraphStruct).AddEdge(idx, x, y, weight)
 
     def AddNode(self,int subg_id, int n_idx):
         deref(self.inner_GraphStruct).AddNode(subg_id,n_idx)

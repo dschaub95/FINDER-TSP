@@ -134,6 +134,7 @@ double MvcEnv::getReward()
     double orig_node_num = (double) graph->num_nodes;
     // TSP reward
     double reward = 0;
+    // the last set of available nbodes consists of two nodes, selecting one determines the entire tour length --> no further action needed
     if ((int)action_list.size() == graph->num_nodes - 1)
     {
         reward = -(double)getLastTourDifference();
@@ -151,28 +152,25 @@ double MvcEnv::getReward()
 
 double MvcEnv::getTourDifference()
 {
+    assert(graph);
+
     double previousLength = 0.0;
     double currentLength = 0.0;
     
     if ((int)action_list.size() > 2)
     {
         // calc length of the last part of the current tour, ranging from second last node to the start node
-        int idx_1 = getEdgeWeightIndex(action_list[action_list.size()-1], action_list[0]);
-        int idx_2 = getEdgeWeightIndex(action_list[action_list.size()-2], action_list[action_list.size()-1]);
-        currentLength += graph->edge_weights[idx_1];
-        currentLength += graph->edge_weights[idx_2];
+        currentLength += graph->getEdgeWeight(action_list[action_list.size()-1], action_list[0]);
+        currentLength += graph->getEdgeWeight(action_list[action_list.size()-2], action_list[action_list.size()-1]);
 
         // calc length of the last part of the previous tour
-        int idx = getEdgeWeightIndex(action_list[action_list.size()-2], action_list[0]);
-        previousLength += graph->edge_weights[idx];
+        previousLength += graph->getEdgeWeight(action_list[action_list.size()-2], action_list[0]);
     }
     else if ((int)action_list.size() == 2)
     {
         // previous tour contains only one node
-        int idx_1 = getEdgeWeightIndex(action_list[action_list.size()-1], action_list[0]);
-        int idx_2 = getEdgeWeightIndex(action_list[action_list.size()-2], action_list[action_list.size()-1]);
-        currentLength += graph->edge_weights[idx_1];
-        currentLength += graph->edge_weights[idx_2];
+        currentLength += graph->getEdgeWeight(action_list[action_list.size()-1], action_list[0]);
+        currentLength += graph->getEdgeWeight(action_list[action_list.size()-2], action_list[action_list.size()-1]);
     }
     return currentLength - previousLength;
 }
@@ -183,20 +181,16 @@ double MvcEnv::getLastTourDifference()
     double currentLength = 0.0;
     assert((int)action_list.size() > 2);
     
-    // get name of the last node
+    // get name of the last remaining node
     int last_node = randomAction();
     
     // calc length of the last part of the current tour, ranging from third last node to the start node
-    int idx_1 = getEdgeWeightIndex(action_list[action_list.size()-2], action_list[action_list.size()-1]);
-    int idx_2 = getEdgeWeightIndex(action_list[action_list.size()-1], last_node);
-    int idx_3 = getEdgeWeightIndex(last_node, action_list[0]);
-    currentLength += graph->edge_weights[idx_1];
-    currentLength += graph->edge_weights[idx_2];
-    currentLength += graph->edge_weights[idx_3];
+    currentLength += graph->getEdgeWeight(action_list[action_list.size()-2], action_list[action_list.size()-1]);
+    currentLength += graph->getEdgeWeight(action_list[action_list.size()-1], last_node);
+    currentLength += graph->getEdgeWeight(last_node, action_list[0]);
 
     // calc length of the last part of the previous tour
-    int idx = getEdgeWeightIndex(action_list[action_list.size()-2], action_list[0]);
-    previousLength += graph->edge_weights[idx];
+    previousLength += graph->getEdgeWeight(action_list[action_list.size()-2], action_list[0]);
   
     return currentLength - previousLength;
 }
@@ -219,36 +213,11 @@ double MvcEnv::getCurrentTourLength()
         {
             continue;
         }
-        int idx = getEdgeWeightIndex(action_list[i-1], action_list[i]);
-        tourLength += graph->edge_weights[idx];
+        tourLength += graph->getEdgeWeight(action_list[i-1], action_list[i]);
     }
     // add path from last to first node
-    int last_idx = getEdgeWeightIndex(action_list[action_list.size()-1], action_list[0]);
-    tourLength += graph->edge_weights[last_idx];
+    tourLength += graph->getEdgeWeight(action_list[action_list.size()-1], action_list[0]);
     return tourLength;
-}
-
-int MvcEnv::getEdgeWeightIndex(int start_node, int end_node)
-// order of the nodes in undirected complete case irelevant
-{
-    int high_node, low_node;
-    // check which node has higher index to determine the corresponding edge weight
-    if (start_node > end_node)
-    {
-        high_node = start_node;
-        low_node = end_node;
-    }
-    else
-    {
-        high_node = end_node;
-        low_node = start_node;
-    }
-    // calculate index..
-    int start_idx = low_node*(graph->num_nodes) - (int)(low_node*(low_node + 1)/2);
-    // printf("Edge (%d, %d) \n", start_node, end_node);
-    // printf("Number of nodes: %d\n", graph->num_nodes);
-    // printf("Result edge weight index: %d\n", start_idx + high_node - low_node - 1);
-    return start_idx + high_node - low_node - 1;
 }
 
 

@@ -46,6 +46,7 @@ public:
     std::vector< std::vector<int> > idx_map_list;
     std::vector<std::pair<int,int>> subgraph_id_span;
     std::vector< std::vector<double> > aux_feat;
+    std::vector< std::vector<double> > node_feat;
     GraphStruct graph;
     std::vector<int> avail_act_cnt;
     int aggregatorID;

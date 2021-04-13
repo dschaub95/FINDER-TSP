@@ -20,7 +20,6 @@ cdef extern from "./src/lib/mvc_env.h":
         double getRemainingCNDScore()except+
         double getTourDifference()except+
         double getLastTourDifference()except+
-        int getEdgeWeightIndex(int start_node, int end_node)except+
         double norm
         double CcNum
         shared_ptr[Graph] graph

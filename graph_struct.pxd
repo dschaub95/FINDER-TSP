@@ -10,7 +10,7 @@ cdef extern from "./src/lib/graph_struct.h":
         vector[vector[T]] head
     cdef cppclass GraphStruct:
         GraphStruct()except+
-        void AddEdge(int idx, int x, int y)except+
+        void AddEdge(int idx, int x, int y, double weight)except+
         void AddNode(int subg_id, int n_idx)except+
         void Resize(unsigned _num_subgraph, unsigned _num_nodes)except+
         LinkedTable[pair[int, int]] *out_edges

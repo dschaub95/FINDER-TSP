@@ -76,6 +76,9 @@ cdef class py_Graph:
     def edge_weights(self):
         return deref(self.inner_graph).edge_weights
 
+    def getEdgeWeight(self, int start_node, int end_node):
+        return deref(self.inner_graph).getEdgeWeight(start_node, end_node)
+
     cdef reshape_Graph(self, int _num_nodes, int _num_edges, int[:] edges_from, int[:] edges_to, double[:] edge_weights):
         cdef int *cint_edges_from = <int*>malloc(_num_edges*sizeof(int))
         cdef int *cint_edges_to = <int*>malloc(_num_edges*sizeof(int))

@@ -19,7 +19,6 @@ cdef class py_ReplaySample:
     @property
     def g_list(self):
         result = []
-        print("obtaining graph list...")
         for graphPtr in deref(self.inner_ReplaySample).g_list:
             result.append(self.G2P(deref(graphPtr)))
             # print("sucessfully appended graph")

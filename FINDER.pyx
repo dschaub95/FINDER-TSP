@@ -108,17 +108,15 @@ class FINDER:
         # [batch_size, node_cnt]
         self.subgsum_param = tf.sparse_placeholder(tf.float32, name="subgsum_param")
         # [batch_size,1]
-        self.target = tf.placeholder(tf.float32, [BATCH_SIZE,1], name="target") # DQN target
+        self.target = tf.placeholder(tf.float32, [BATCH_SIZE,1], name="target") # DQN target 
         # [batch_size, aux_dim]
         self.aux_input = tf.placeholder(tf.float32, name="aux_input")
-        
         # [node_cnt, 4], per node [(bool)is not in current path, node x pos, node y pos, sum of edge weights]
         self.node_input = tf.placeholder(tf.float32, name="node_input")
 
         #[batch_size, 1]
         if self.IsPrioritizedSampling:
             self.ISWeights = tf.placeholder(tf.float32, [BATCH_SIZE, 1], name='IS_weights')
-
 
         # init Q network
         self.loss,self.trainStep,self.q_pred, self.q_on_all, self.Q_param_list = self.BuildNet() #[loss,trainStep,q_pred, q_on_all, ...]
@@ -145,150 +143,153 @@ class FINDER:
 #################################################New code for FINDER#####################################
     def BuildNet(self):
         # [2, embed_dim]
-        
         w_n2l = tf.Variable(tf.truncated_normal([2, self.embedding_size], stddev=initialization_stddev), tf.float32)
-        # [embed_dim, embed_dim]
+        
         # Define weight matrices for GNN 
+        # [embed_dim, embed_dim]
         p_node_conv = tf.Variable(tf.truncated_normal([self.embedding_size, self.embedding_size], stddev=initialization_stddev), tf.float32)
         if embeddingMethod == 1:    #'graphsage'
+            
             # [embed_dim, embed_dim]
             p_node_conv2 = tf.Variable(tf.truncated_normal([self.embedding_size, self.embedding_size], stddev=initialization_stddev), tf.float32)
+            
             # [2*embed_dim, embed_dim]
             p_node_conv3 = tf.Variable(tf.truncated_normal([2*self.embedding_size, self.embedding_size], stddev=initialization_stddev), tf.float32)
 
         #[reg_hidden+aux_dim, 1]
         if self.reg_hidden > 0:
-            #[2*embed_dim, reg_hidden]
-           # h1_weight = tf.Variable(tf.truncated_normal([2 * self.embedding_size, self.reg_hidden], stddev=initialization_stddev), tf.float32)
             # [embed_dim, reg_hidden]
             h1_weight = tf.Variable(tf.truncated_normal([self.embedding_size, self.reg_hidden], stddev=initialization_stddev), tf.float32)
-            #[reg_hidden1, reg_hidden2]
-            # h2_weight = tf.Variable(tf.truncated_normal([self.reg_hidden1, self.reg_hidden2], stddev=initialization_stddev), tf.float32)
+            
             #[reg_hidden+aux_dim, 1]
             h2_weight = tf.Variable(tf.truncated_normal([self.reg_hidden + aux_dim, 1], stddev=initialization_stddev), tf.float32)
+            
             #[reg_hidden2 + aux_dim, 1]
             last_w = h2_weight
-        else:
-            #[2*embed_dim, reg_hidden]
-            h1_weight = tf.Variable(tf.truncated_normal([2 * self.embedding_size, self.reg_hidden], stddev=initialization_stddev), tf.float32)
-            # [embed_dim, reg_hidden]
-            # h1_weight = tf.Variable(tf.truncated_normal([self.embedding_size, self.reg_hidden], stddev=initialization_stddev), tf.float32)
-            #[2*embed_dim, reg_hidden]
-            last_w = h1_weight
 
-        ## [embed_dim, 1]
+        # [embed_dim, 1]
         cross_product = tf.Variable(tf.truncated_normal([self.embedding_size, 1], stddev=initialization_stddev), tf.float32)
 
-        #[node_cnt, 2]
-        nodes_size = tf.shape(self.n2nsum_param)[0]
-        node_input = tf.ones((nodes_size,2))
-
-        y_nodes_size = tf.shape(self.subgsum_param)[0]
+        # # [node_cnt, 2]
+        # nodes_size = tf.shape(self.n2nsum_param)[0]
+        # node_input = tf.ones((nodes_size,2))
+        
         # [batch_size, 2]
+        y_nodes_size = tf.shape(self.subgsum_param)[0]
         y_node_input = tf.ones((y_nodes_size,2))
+        
+        #[node_cnt, 2] * [2, embed_dim] = [node_cnt, embed_dim], not sparse
+        input_message = tf.matmul(tf.cast(self.node_input,tf.float32), w_n2l)
+        # # [node_cnt, 2] * [2, embed_dim] = [node_cnt, embed_dim]
+        # input_message = tf.matmul(tf.cast(node_input,tf.float32), w_n2l)
 
-        #[node_cnt, 2] * [2, embed_dim] = [node_cnt, embed_dim]
-        input_message = tf.matmul(tf.cast(node_input,tf.float32), w_n2l)
-
-        #[node_cnt, embed_dim]  # no sparse
+        # [node_cnt, embed_dim], no sparse
         input_potential_layer = tf.nn.relu(input_message)
 
-        
         # intial node embedding, no sparse
-        y_input_message = tf.matmul(tf.cast(y_node_input,tf.float32), w_n2l) # [batch_size, embed_dim]
-        #[batch_size, embed_dim]  # no sparse
+        # [batch_size, 2] * [2, embed_dim] = [batch_size, embed_dim]
+        y_input_message = tf.matmul(tf.cast(y_node_input,tf.float32), w_n2l)
+        
+        # [batch_size, embed_dim], no sparse
         y_input_potential_layer = tf.nn.relu(y_input_message)
 
-        #input_potential_layer = input_message
+        # input_potential_layer = input_message
         cdef int lv = 0
-        #[node_cnt, embed_dim], no sparse
+        # [node_cnt, embed_dim], no sparse
         cur_message_layer = input_potential_layer
         cur_message_layer = tf.nn.l2_normalize(cur_message_layer, axis=1)
 
-        #[batch_size, embed_dim], no sparse
+        # [batch_size, embed_dim], no sparse
         y_cur_message_layer = y_input_potential_layer
-        # [batch_size, embed_dim]
         y_cur_message_layer = tf.nn.l2_normalize(y_cur_message_layer, axis=1)
 
         while lv < max_bp_iter:
             lv = lv + 1
-            #[node_cnt, node_cnt] * [node_cnt, embed_dim] = [node_cnt, embed_dim], dense
-            n2npool = tf.sparse_tensor_dense_matmul(tf.cast(self.n2nsum_param,tf.float32), cur_message_layer) 
+            
+            # [node_cnt, node_cnt] * [node_cnt, embed_dim] = [node_cnt, embed_dim], dense
+            n2npool = tf.sparse_tensor_dense_matmul(tf.cast(self.n2nsum_param, tf.float32), cur_message_layer) 
+            
             # tf.cast casts tensor to new type, tf.sparse_tensor_dense_matmul multiplies sparse tensor of rank 2 with dense matrix
-
-            #[node_cnt, embed_dim] * [embed_dim, embed_dim] = [node_cnt, embed_dim], dense
+            # [node_cnt, embed_dim] * [embed_dim, embed_dim] = [node_cnt, embed_dim], dense
             node_linear = tf.matmul(n2npool, p_node_conv)
+            
             # simple matrix multiplication
             # [batch_size, node_cnt] * [node_cnt, embed_dim] = [batch_size, embed_dim]
-            y_n2npool = tf.sparse_tensor_dense_matmul(tf.cast(self.subgsum_param,tf.float32), cur_message_layer)
-            #[batch_size, embed_dim] * [embed_dim, embed_dim] = [batch_size, embed_dim], dense
+            y_n2npool = tf.sparse_tensor_dense_matmul(tf.cast(self.subgsum_param, tf.float32), cur_message_layer)
+            
+            # [batch_size, embed_dim] * [embed_dim, embed_dim] = [batch_size, embed_dim], dense
             y_node_linear = tf.matmul(y_n2npool, p_node_conv)
+            
             if embeddingMethod == 0: # 'structure2vec'
-                #[node_cnt, embed_dim] + [node_cnt, embed_dim] = [node_cnt, embed_dim], return tensed matrix
+                # [node_cnt, embed_dim] + [node_cnt, embed_dim] = [node_cnt, embed_dim], return tensed matrix
                 merged_linear = tf.add(node_linear,input_message)
-                #[node_cnt, embed_dim]
+                
+                # [node_cnt, embed_dim]
                 cur_message_layer = tf.nn.relu(merged_linear)
 
-                #[batch_size, embed_dim] + [batch_size, embed_dim] = [batch_size, embed_dim], return tensed matrix
+                # [batch_size, embed_dim] + [batch_size, embed_dim] = [batch_size, embed_dim], return tensed matrix
                 y_merged_linear = tf.add(y_node_linear, y_input_message)
-                #[batch_size, embed_dim]
+                
+                # [batch_size, embed_dim]
                 y_cur_message_layer = tf.nn.relu(y_merged_linear)
             else:   # 'graphsage'
-                #[node_cnt, embed_dim] * [embed_dim, embed_dim] = [node_cnt, embed_dim], dense
+                # [node_cnt, embed_dim] * [embed_dim, embed_dim] = [node_cnt, embed_dim], dense
                 cur_message_layer_linear = tf.matmul(tf.cast(cur_message_layer, tf.float32), p_node_conv2)
 
-                #[[node_cnt, embed_dim] [node_cnt, embed_dim]] = [node_cnt, 2*embed_dim], return tensed matrix
+                # [[node_cnt, embed_dim] [node_cnt, embed_dim]] = [node_cnt, 2*embed_dim], return tensed matrix
                 merged_linear = tf.concat([node_linear, cur_message_layer_linear], 1)
                 
-                #[node_cnt, 2*embed_dim]*[2*embed_dim, embed_dim] = [node_cnt, embed_dim]
+                # [node_cnt, 2*embed_dim]*[2*embed_dim, embed_dim] = [node_cnt, embed_dim]
                 cur_message_layer = tf.nn.relu(tf.matmul(merged_linear, p_node_conv3))
 
-                #[batch_size, embed_dim] * [embed_dim, embed_dim] = [batch_size, embed_dim], dense
+                # [batch_size, embed_dim] * [embed_dim, embed_dim] = [batch_size, embed_dim], dense
                 y_cur_message_layer_linear = tf.matmul(tf.cast(y_cur_message_layer, tf.float32), p_node_conv2)
                 
-                #[[batch_size, embed_dim] [batch_size, embed_dim]] = [batch_size, 2*embed_dim], return tensed matrix
+                # [[batch_size, embed_dim] [batch_size, embed_dim]] = [batch_size, 2*embed_dim], return tensed matrix
                 y_merged_linear = tf.concat([y_node_linear, y_cur_message_layer_linear], 1)
                 
-                #[batch_size, 2*embed_dim]*[2*embed_dim, embed_dim] = [batch_size, embed_dim]
+                # [batch_size, 2*embed_dim]*[2*embed_dim, embed_dim] = [batch_size, embed_dim]
                 y_cur_message_layer = tf.nn.relu(tf.matmul(y_merged_linear, p_node_conv3))
 
+            # [node_cnt, embed_dim]
             cur_message_layer = tf.nn.l2_normalize(cur_message_layer, axis=1)
+            
+            # [batch_size, embed_dim]
             y_cur_message_layer = tf.nn.l2_normalize(y_cur_message_layer, axis=1)
 
-        # self.node_embedding = cur_message_layer
-        #[batch_size, node_cnt] * [node_cnt, embed_dim] = [batch_size, embed_dim], dense
-        # y_potential = tf.sparse_tensor_dense_matmul(tf.cast(self.subgsum_param,tf.float32), cur_message_layer)
+        # [batch_size, embed_dim]
         y_potential = y_cur_message_layer
-        #[batch_size, node_cnt] * [node_cnt, embed_dim] = [batch_size, embed_dim]
+        # [batch_size, node_cnt] * [node_cnt, embed_dim] = [batch_size, embed_dim]
         action_embed = tf.sparse_tensor_dense_matmul(tf.cast(self.action_select, tf.float32), cur_message_layer)
-
-        # embed_s_a = tf.concat([action_embed,y_potential],1)
-
-         # # [batch_size, embed_dim, embed_dim]
+        
+        # [batch_size, embed_dim, 1] * [batch_size, 1, embed_dim] = [batch_size, embed_dim, embed_dim]
         temp = tf.matmul(tf.expand_dims(action_embed, axis=2),tf.expand_dims(y_potential, axis=1))
-        # # [batch_size, embed_dim]
+        
+        # [batch_size, embed_dim]
         Shape = tf.shape(action_embed)
-        # # [batch_size, embed_dim], first transform
-        embed_s_a = tf.reshape(tf.matmul(temp, tf.reshape(tf.tile(cross_product,[Shape[0],1]),[Shape[0],Shape[1],1])),Shape)
+        
+        # ([batch_size, embed_dim, embed_dim] * ([batch_size*embed_dim, 1] --> [batch_size, embed_dim, 1])) --> [batch_size, embed_dim] = [batch_size, embed_dim], first transform
+        embed_s_a = tf.reshape(tf.matmul(temp, tf.reshape(tf.tile(cross_product,[Shape[0],1]),[Shape[0],Shape[1],1])), Shape) 
 
-        #[batch_size, embed_dim]
+        # [batch_size, embed_dim]
         last_output = embed_s_a
 
         if self.reg_hidden > 0:
-            #[batch_size, 2*embed_dim] * [2*embed_dim, reg_hidden] = [batch_size, reg_hidden], dense
+            # [batch_size, 2*embed_dim] * [2*embed_dim, reg_hidden] = [batch_size, reg_hidden], dense
             hidden = tf.matmul(embed_s_a, h1_weight)
-            #[batch_size, reg_hidden]
+            # [batch_size, reg_hidden]
             last_output = tf.nn.relu(hidden)
 
         # if reg_hidden == 0: ,[[batch_size, 2*embed_dim], [batch_size, aux_dim]] = [batch_size, 2*embed_dim+aux_dim]
-        # if reg_hidden > 0: ,[[batch_size, reg_hidden], [batch_size, aux_dim]] = [batch_size, reg_hidden+aux_dim]
+        # if reg_hidden > 0: , [[batch_size, reg_hidden], [batch_size, aux_dim]] = [batch_size, reg_hidden+aux_dim]
         last_output = tf.concat([last_output, self.aux_input], 1)
-        #if reg_hidden == 0: ,[batch_size, 2*embed_dim+aux_dim] * [2*embed_dim+aux_dim, 1] = [batch_size, 1]
-        #if reg_hidden > 0: ,[batch_size, reg_hidden+aux_dim] * [reg_hidden+aux_dim, 1] = [batch_size, 1]
+        # if reg_hidden == 0: ,[batch_size, 2*embed_dim+aux_dim] * [2*embed_dim+aux_dim, 1] = [batch_size, 1]
+        # if reg_hidden > 0: ,[batch_size, reg_hidden+aux_dim] * [reg_hidden+aux_dim, 1] = [batch_size, 1]
         q_pred = tf.matmul(last_output, last_w)
 
-        ## first order reconstruction loss
+        # Trace([embed_dim, node_cnt] * [node_cnt, node_cnt] * [node_cnt, embed_dim]) first order reconstruction loss
         loss_recons = 2 * tf.trace(tf.matmul(tf.transpose(cur_message_layer), tf.sparse_tensor_dense_matmul(tf.cast(self.laplacian_param,tf.float32), cur_message_layer)))
+        
         edge_num = tf.sparse_reduce_sum(tf.cast(self.n2nsum_param, tf.float32))
         
         loss_recons = tf.divide(loss_recons, edge_num)
@@ -309,36 +310,35 @@ class FINDER:
 
         trainStep = tf.train.AdamOptimizer(self.learning_rate).minimize(loss)
 
-        #[node_cnt, batch_size] * [batch_size, embed_dim] = [node_cnt, embed_dim]
+        # [node_cnt, batch_size] * [batch_size, embed_dim] = [node_cnt, embed_dim]
         rep_y = tf.sparse_tensor_dense_matmul(tf.cast(self.rep_global, tf.float32), y_potential)
 
-      #  embed_s_a_all = tf.concat([cur_message_layer,rep_y],1)
-
-        # # # [node_cnt, embed_dim, embed_dim]
-        temp1 = tf.matmul(tf.expand_dims(cur_message_layer, axis=2),tf.expand_dims(rep_y, axis=1))
-        # # [node_cnt embed_dim]
+        # [node_cnt, embed_dim, 1] * [node_cnt, 1, embed_dim] = [node_cnt, embed_dim, embed_dim]
+        temp_1 = tf.matmul(tf.expand_dims(cur_message_layer, axis=2), tf.expand_dims(rep_y, axis=1))
+        
+        # [node_cnt embed_dim]
         Shape1 = tf.shape(cur_message_layer)
-        # # [batch_size, embed_dim], first transform
-        embed_s_a_all = tf.reshape(tf.matmul(temp1, tf.reshape(tf.tile(cross_product,[Shape1[0],1]),[Shape1[0],Shape1[1],1])),Shape1)
+        
+        # [batch_size, embed_dim], first transform
+        embed_s_a_all = tf.reshape(tf.matmul(temp_1, tf.reshape(tf.tile(cross_product,[Shape1[0],1]),[Shape1[0],Shape1[1],1])),Shape1)
 
-        #[node_cnt, 2 * embed_dim]
+        # [node_cnt, 2 * embed_dim]
         last_output = embed_s_a_all
         if self.reg_hidden > 0:
-            #[node_cnt, 2 * embed_dim] * [2 * embed_dim, reg_hidden] = [node_cnt, reg_hidden1]
+            # [node_cnt, 2 * embed_dim] * [2 * embed_dim, reg_hidden] = [node_cnt, reg_hidden]
             hidden = tf.matmul(embed_s_a_all, h1_weight)
-            #Relu, [node_cnt, reg_hidden1]
+            # Relu, [node_cnt, reg_hidden]
             last_output = tf.nn.relu(hidden)
-            #[node_cnt, reg_hidden1] * [reg_hidden1, reg_hidden2] = [node_cnt, reg_hidden2]
 
-        #[node_cnt, batch_size] * [batch_size, aux_dim] = [node_cnt, aux_dim]
+        # [node_cnt, batch_size] * [batch_size, aux_dim] = [node_cnt, aux_dim]
         rep_aux = tf.sparse_tensor_dense_matmul(tf.cast(self.rep_global, tf.float32), self.aux_input)
 
-        #if reg_hidden == 0: , [[node_cnt, 2 * embed_dim], [node_cnt, aux_dim]] = [node_cnt, 2*embed_dim + aux_dim]
-        #if reg_hidden > 0: , [[node_cnt, reg_hidden], [node_cnt, aux_dim]] = [node_cnt, reg_hidden + aux_dim]
+        # if reg_hidden == 0: , [[node_cnt, 2 * embed_dim], [node_cnt, aux_dim]] = [node_cnt, 2*embed_dim + aux_dim]
+        # if reg_hidden > 0: , [[node_cnt, reg_hidden], [node_cnt, aux_dim]] = [node_cnt, reg_hidden + aux_dim]
         last_output = tf.concat([last_output,rep_aux],1)
 
-        #if reg_hidden == 0: , [node_cnt, 2 * embed_dim + aux_dim] * [2 * embed_dim + aux_dim, 1] = [node_cnt，1]
-        #f reg_hidden > 0: , [node_cnt, reg_hidden + aux_dim] * [reg_hidden + aux_dim, 1] = [node_cnt，1]
+        # if reg_hidden == 0: , [node_cnt, 2 * embed_dim + aux_dim] * [2 * embed_dim + aux_dim, 1] = [node_cnt，1]
+        # if reg_hidden > 0: , [node_cnt, reg_hidden + aux_dim] * [reg_hidden + aux_dim, 1] = [node_cnt，1]
         q_on_all = tf.matmul(last_output, last_w)
 
         return loss, trainStep, q_pred, q_on_all, tf.trainable_variables()
@@ -401,15 +401,16 @@ class FINDER:
             g = self.gen_graph(NUM_MIN, NUM_MAX)
             g_degree = g.copy()
             g_betweenness = g.copy()
-            val_degree, sol = self.HXA(g_degree, 'HDA')
-            result_degree += val_degree
-            val_betweenness, sol = self.HXA(g_betweenness, 'HBA')
-            result_betweeness += val_betweenness
+            # val_degree, sol = self.HXA(g_degree, 'HDA')
+            # result_degree += val_degree
+            # val_betweenness, sol = self.HXA(g_betweenness, 'HBA')
+            # result_betweeness += val_betweenness
             self.InsertGraph(g, is_test=True)
-        print ('Validation of HDA: %.6f'%(result_degree / n_valid))
-        print ('Validation of HBA: %.6f'%(result_betweeness / n_valid))
+        # print ('Validation of HDA: %.6f'%(result_degree / n_valid))
+        # print ('Validation of HBA: %.6f'%(result_betweeness / n_valid))
 
     def Run_simulator(self, int num_seq, double eps, TrainSet, int n_step):
+        print("Running simulator...\n")
         cdef int num_env = len(self.env_list)
         cdef int n = 0
         cdef int i
@@ -417,9 +418,9 @@ class FINDER:
         while n < num_seq:
             for i in range(num_env):
                 # check whether terminal state is reached, if so add the graph to the graph list
-                print("Checking for terminal state")
+                # print("Checking for terminal state")
                 if self.env_list[i].graph.num_nodes == 0 or self.env_list[i].isTerminal():
-                    print("Checked for terminal state")
+                    # print("Checked for terminal state")
                     if self.env_list[i].graph.num_nodes > 0 and self.env_list[i].isTerminal():
                         n = n + 1
                         # after reaching the terminal state add all nstep transitions to the replay memory 
@@ -436,7 +437,7 @@ class FINDER:
                 break
             Random = False
             if random.uniform(0,1) >= eps:
-                print("Making prediction")
+                # print("Making prediction")
                 pred = self.PredictWithCurrentQNet(self.g_list, [env.action_list for env in self.env_list])
             else:
                 Random = True
@@ -447,7 +448,7 @@ class FINDER:
                     a_t = self.env_list[i].randomAction()
                 else:
                     a_t = self.argMax(pred[i])
-                print("Making step")
+                # print("Making step")
                 self.env_list[i].step(a_t)
             # print("Action lists:", [env.action_list for env in self.env_list])
             # print("covered set:", [env.covered_set for env in self.env_list])
@@ -464,8 +465,9 @@ class FINDER:
         
         self.inputs['target'] = self.m_y
         # print("Targets:", self.inputs['target'])
-        
+        # print("preparing batch graph in SetupTrain...")
         prepareBatchGraph = PrepareBatchGraph.py_PrepareBatchGraph(aggregatorID)
+        # print("setting up train in SetupTrain...")
         prepareBatchGraph.SetupTrain(idxes, g_list, covered, actions)
         self.inputs['action_select'] = prepareBatchGraph.act_select
         self.inputs['rep_global'] = prepareBatchGraph.rep_global
@@ -474,6 +476,8 @@ class FINDER:
         self.inputs['laplacian_param'] = prepareBatchGraph.laplacian_param
         self.inputs['subgsum_param'] = prepareBatchGraph.subgsum_param
         self.inputs['aux_input'] = prepareBatchGraph.aux_feat
+        self.inputs['node_input'] = prepareBatchGraph.node_feat
+        # print("Node input Train:", np.array(self.inputs['node_input']).shape)
 
 
     def SetupPredAll(self, idxes, g_list, covered):
@@ -481,10 +485,13 @@ class FINDER:
         prepareBatchGraph.SetupPredAll(idxes, g_list, covered)
         self.inputs['rep_global'] = prepareBatchGraph.rep_global
         self.inputs['n2nsum_param'] = prepareBatchGraph.n2nsum_param
-        print("n2nsum_param:", self.inputs['n2nsum_param'])
+        # print("n2nsum_param:", self.inputs['n2nsum_param'])
         # self.inputs['laplacian_param'] = prepareBatchGraph.laplacian_param
         self.inputs['subgsum_param'] = prepareBatchGraph.subgsum_param
+        # print("subgsum_param:", self.inputs['subgsum_param'])
         self.inputs['aux_input'] = prepareBatchGraph.aux_feat
+        self.inputs['node_input'] = prepareBatchGraph.node_feat
+        # print("Node input Pred:", np.array(self.inputs['node_input']).shape)
         return prepareBatchGraph.idx_map_list
 
     def Predict(self, g_list, covered, isSnapShot):
@@ -508,6 +515,7 @@ class FINDER:
             my_dict[self.n2nsum_param] = self.inputs['n2nsum_param']
             my_dict[self.subgsum_param] = self.inputs['subgsum_param']
             my_dict[self.aux_input] = np.array(self.inputs['aux_input'])
+            my_dict[self.node_input] = np.array(self.inputs['node_input'])
             # print("running training session")
             if isSnapShot:
                 result = self.session.run([self.q_on_allT], feed_dict = my_dict)
@@ -556,10 +564,14 @@ class FINDER:
         ness = False
         cdef int i
         for i in range(BATCH_SIZE):
+            # check if minibatch contains non terminal sample
             if (not sample.list_term[i]):
                 ness = True
                 break
         # print("checked whether mini batch is containing at least one non terminal state sample, it evaluated to:", ness)
+        
+        ############################## Target Calculation start ##############################
+        # only if minbatch contains non terminal sample the Snapshot DQN is used to calculate the target
         if ness:
             if self.IsDoubleDQN:
                 # first make prediction with current Q Net for all possible actions and graphs in batch
@@ -575,8 +587,7 @@ class FINDER:
                 # print("predicting with snapshot..")
                 list_pred = self.PredictWithSnapshot(sample.g_list, sample.list_s_primes)
                 # print("sucessfully predicted with snapshot")
-
-
+                
         list_target = np.zeros([BATCH_SIZE, 1])
         # calculate the target
         for i in range(BATCH_SIZE):
@@ -590,7 +601,7 @@ class FINDER:
             q_rhs += sample.list_rt[i]
             list_target[i] = q_rhs
             # list_target.append(q_rhs)
-        ### end: calculate target
+        ############################## Target Calculation end ##############################
         print("sucessfully calculated the target for DQN optimization")
         if self.IsPrioritizedSampling:
             return self.fit_with_prioritized(sample.b_idx,sample.ISWeights,sample.g_list, sample.list_st, sample.list_at,list_target)
@@ -634,7 +645,7 @@ class FINDER:
         cdef double loss = 0.0
         cdef int n_graphs = len(g_list)
         cdef int i, j, bsize
-        print("Fitting in total:", n_graphs, "graphs.\n")
+        print("Fitting in total:", n_graphs, "graphs.")
         for i in range(0, n_graphs, BATCH_SIZE):
             bsize = BATCH_SIZE
             if (i + BATCH_SIZE) > n_graphs:
@@ -646,7 +657,11 @@ class FINDER:
                 # batch_idxes.append(j)
             batch_idxes = np.int32(batch_idxes)
 
-            self.SetupTrain(batch_idxes, g_list, covered, actions,list_target)
+            # print("Batch indices:", batch_idxes)
+            # print("actions:", actions)
+            # print("covered:", covered)
+            # print("targets:", list_target)
+            self.SetupTrain(batch_idxes, g_list, covered, actions, list_target)
             my_dict = {}
             my_dict[self.action_select] = self.inputs['action_select']
             my_dict[self.rep_global] = self.inputs['rep_global']
@@ -654,9 +669,11 @@ class FINDER:
             my_dict[self.laplacian_param] = self.inputs['laplacian_param']
             my_dict[self.subgsum_param] = self.inputs['subgsum_param']
             my_dict[self.aux_input] = np.array(self.inputs['aux_input'])
+            my_dict[self.node_input] = np.array(self.inputs['node_input'])
             my_dict[self.target] = self.inputs['target']
-
+            print("running training session...")
             result = self.session.run([self.loss,self.trainStep], feed_dict=my_dict)
+            print("sucessfully ran training session")
             loss += result[0]*bsize
         return loss / len(g_list)
 
@@ -682,14 +699,13 @@ class FINDER:
         VCFile = '%s/ModelVC_%d_%d.csv'%(save_dir, NUM_MIN, NUM_MAX)
         f_out = open(VCFile, 'w')
         for iter in range(MAX_ITERATION):
-            print("Iteration: ", iter)
+            print("\n Iteration: ", iter)
             start = time.clock()
             ###########-----------------------normal training data setup(start) -----------------##############################
             if iter and iter % 5000 == 0:
                 print("generating new traning graphs")
                 self.gen_new_graphs(NUM_MIN, NUM_MAX)
             eps = eps_end + max(0., (eps_start - eps_end) * (eps_step - iter) / eps_step)
-
             if iter % 10 == 0:
                 self.PlayGame(10, eps)
             if iter % 300 == 0:
@@ -704,7 +720,7 @@ class FINDER:
                 test_end = time.time()
                 f_out.write('%.16f\n'%(frac/n_valid))   #write vc into the file
                 f_out.flush()
-                print('iter %d, eps %.4f, average size of vc:%.6f'%(iter, eps, frac/n_valid))
+                print('iter %d, eps %.4f, average tour length: %.6f'%(iter, eps, frac/n_valid))
                 print ('testing 200 graphs time: %.2fs'%(test_end-test_start))
                 N_end = time.clock()
                 print ('300 iterations total time: %.2fs\n'%(N_end-N_start))
@@ -859,12 +875,12 @@ class FINDER:
             sol_reinsert = sol
         solution = sol_reinsert + sol_left
         print ('number of solution nodes:%d'%len(solution))
-        Robustness = self.utils.getRobustness(g_inner, solution)
+        Tourlength = self.utils.getTourLength(g_inner, solution)
         MaxCCList = self.utils.MaxWccSzList
-        return Robustness, MaxCCList
+        return Tourlength, MaxCCList
 
 
-    def Test(self,int gid):
+    def Test(self, int gid):
         g_list = []
         self.test_env.s0(self.TestSet.Get(gid))
         g_list.append(self.test_env.graph)
@@ -874,14 +890,18 @@ class FINDER:
         while (not self.test_env.isTerminal()):
             # cost += 1
             list_pred = self.PredictWithCurrentQNet(g_list, [self.test_env.action_list])
-            # new_action = self.argMax(list_pred[0])
+            # print("list_pred:", list_pred)
             new_action = self.argMax(list_pred[0])
             self.test_env.stepWithoutReward(new_action)
             sol.append(new_action)
+        
         nodes = list(range(g_list[0].num_nodes))
         solution = sol + list(set(nodes)^set(sol))
-        Robustness = self.utils.getRobustness(g_list[0], solution)
-        return Robustness
+        # print("sol:", sol)
+        # print("nodes:", nodes)
+        # print("Solution:", solution)
+        Tourlength = self.utils.getTourLength(g_list[0], solution)
+        return Tourlength
 
 
     def GetSol(self, int gid, int step=1):
@@ -903,8 +923,8 @@ class FINDER:
                     break
         nodes = list(range(g_list[0].num_nodes))
         solution = sol + list(set(nodes)^set(sol))
-        Robustness = self.utils.getRobustness(g_list[0], solution)
-        return Robustness, sol
+        Tourlength = self.utils.getTourLength(g_list[0], solution)
+        return Tourlength, sol
 
 
     def SaveModel(self,model_path):
@@ -979,5 +999,5 @@ class FINDER:
             G.remove_node(node)
         solution = sol + list(set(g.nodes())^set(sol)) # contains two times sol and all node labels
         solutions = [int(i) for i in solution]
-        Robustness = self.utils.getRobustness(self.GenNetwork(g), solutions)
-        return Robustness, sol
+        Tourlength = self.utils.getTourLength(self.GenNetwork(g), solutions)
+        return Tourlength, sol

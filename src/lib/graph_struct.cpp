@@ -22,6 +22,7 @@ void LinkedTable<T>::AddEntry(int head_id, T content)
 		if (head_id + 1 > ncap)
 		{
 			ncap = std::max(ncap * 2, head_id + 1);
+			// create new space in the vector
 			head.resize(ncap);	
 			for (int i = n; i < head_id + 1; ++i)
 				head[i].clear();
@@ -64,12 +65,13 @@ GraphStruct::~GraphStruct()
 	delete subgraph;
 }
 
-void GraphStruct::AddEdge(int idx, int x, int y)
+void GraphStruct::AddEdge(int idx, int x, int y, double weight)
 {
     out_edges->AddEntry(x, std::pair<int, int>(idx, y));
     in_edges->AddEntry(y, std::pair<int, int>(idx, x));         
 	num_edges++;
     edge_list.push_back(std::make_pair(x, y));
+	edge_weights.push_back(weight);
     assert(num_edges == edge_list.size());
     assert(num_edges - 1 == (unsigned)idx);
 }
