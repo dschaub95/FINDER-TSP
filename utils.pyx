@@ -23,7 +23,8 @@ cdef class py_Utils:
         deref(self.inner_Graph).edge_list = _g.edge_list
         deref(self.inner_Graph).adj_list = _g.adj_list
         deref(self.inner_Graph).edge_weights = _g.edge_weights
-        return deref(self.inner_Utils).getRobustness(self.inner_Graph,solution)
+        deref(self.inner_Graph).node_feats = _g.node_feats
+        return deref(self.inner_Utils).getRobustness(self.inner_Graph, solution)
 
     def getTourLength(self,_g,solution):
         self.inner_Graph = shared_ptr[Graph](new Graph())
@@ -32,7 +33,8 @@ cdef class py_Utils:
         deref(self.inner_Graph).edge_list = _g.edge_list
         deref(self.inner_Graph).adj_list = _g.adj_list
         deref(self.inner_Graph).edge_weights = _g.edge_weights
-        return deref(self.inner_Utils).getTourLength(self.inner_Graph,solution)
+        deref(self.inner_Graph).node_feats = _g.node_feats
+        return deref(self.inner_Utils).getTourLength(self.inner_Graph, solution)
 
 
     def reInsert(self,_g,solution,allVex,int decreaseStrategyID,int reinsertEachStep):
@@ -42,7 +44,8 @@ cdef class py_Utils:
         deref(self.inner_Graph).edge_list = _g.edge_list
         deref(self.inner_Graph).adj_list = _g.adj_list
         deref(self.inner_Graph).edge_weights = _g.edge_weights
-        return deref(self.inner_Utils).reInsert(self.inner_Graph,solution,allVex,decreaseStrategyID,reinsertEachStep)
+        deref(self.inner_Graph).node_feats = _g.node_feats
+        return deref(self.inner_Utils).reInsert(self.inner_Graph, solution, allVex,decreaseStrategyID, reinsertEachStep)
 
     def getMxWccSz(self, _g):
         self.inner_Graph =shared_ptr[Graph](new Graph())
@@ -51,6 +54,7 @@ cdef class py_Utils:
         deref(self.inner_Graph).edge_list = _g.edge_list
         deref(self.inner_Graph).adj_list = _g.adj_list
         deref(self.inner_Graph).edge_weights = _g.edge_weights
+        deref(self.inner_Graph).node_feats = _g.node_feats
         return deref(self.inner_Utils).getMxWccSz(self.inner_Graph)
 
     @property

@@ -108,17 +108,19 @@ public:
 	 */
 	LinkedTable< std::pair<int, int> > *in_edges;
 
+	// stores weights of all incoming edges of a node
+	LinkedTable< double > *edge_weights;
+
 	/**
 	 * track the node lists of each subgraph
 	 */
-	LinkedTable< int >* subgraph;
+	LinkedTable< int > *subgraph;
 
 	/**
 	 * edge list ({x->y}), where the position in the edge_list corresponds to the edge index
 	 */
 	std::vector< std::pair<int, int> > edge_list;    
 
-	std::vector<double> edge_weights;
 	/**
 	 * total # nodes 
 	 */

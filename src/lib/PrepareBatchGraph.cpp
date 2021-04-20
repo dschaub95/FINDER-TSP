@@ -1,4 +1,5 @@
 #include "PrepareBatchGraph.h"
+#include <math.h>
 
 sparseMatrix::sparseMatrix()
 {
@@ -28,7 +29,8 @@ PrepareBatchGraph::~PrepareBatchGraph()
     subgsum_param = nullptr;
     laplacian_param = nullptr;
     idx_map_list.clear();
-    node_feat.clear();
+    node_feats.clear();
+    edge_sum.clear();
     aux_feat.clear();
     avail_act_cnt.clear();
     aggregatorID = -1;
@@ -176,10 +178,12 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
     {             
         auto g = g_list[idxes[i]];
         auto idx_map = idx_map_list[i];
-
+    
+        // extract info per node
         int t = 0;
         for (int j = 0; j < (int)g->num_nodes; ++j)
         {   
+            // maskes all node indices that are unaivalable
             if (idx_map[j] < 0)
             {
                 continue;
@@ -188,9 +192,13 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
             
             // change in case of simple node weights can be adapted to capture node positions
             std::vector<double> temp_node_feat;
+            // printf("Size node feats: %d", (int)sizeof(g->node_feats[0]));
+            for (int k = 0; k < 2; ++k)
+            {
+                temp_node_feat.push_back(g->node_feats[j][k]);
+            }
             temp_node_feat.push_back(1.0);
-            temp_node_feat.push_back(1.0);
-            node_feat.push_back(temp_node_feat);
+            node_feats.push_back(temp_node_feat);
 
             graph.AddNode(i, node_cnt + t);
             if (!actions)
@@ -221,13 +229,14 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
                 
             auto x = idx_map[p.first] + node_cnt, y = idx_map[p.second] + node_cnt;
             // add code to determine edge weight corresponding to the current edge
-            double edge_weight = 1.0; // g->getEdgeWeight(x, y);
+            double edge_weight = g->getEdgeWeight(p.first, p.second);
             // printf("Index x: %d, Index y: %d\n", x, y);
             graph.AddEdge(edge_cnt, x, y, edge_weight);
             edge_cnt += 1;
             graph.AddEdge(edge_cnt, y, x, edge_weight);
             edge_cnt += 1;
         }
+        // add all available actions in the current state to the node count
         node_cnt += avail_act_cnt[i];
     }
     assert(node_cnt == (int)graph.num_nodes);
@@ -235,10 +244,9 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
     auto result_list = n2n_construct(&graph, aggregatorID);
     n2nsum_param = result_list[0];
     laplacian_param = result_list[1];
-    subgsum_param = subg_construct(&graph,subgraph_id_span);
+    subgsum_param = subg_construct(&graph, subgraph_id_span);
 
 }
-
 
 
 void PrepareBatchGraph::SetupTrain(std::vector<int> idxes,
@@ -249,8 +257,6 @@ void PrepareBatchGraph::SetupTrain(std::vector<int> idxes,
     SetupGraphInput(idxes, g_list, covered, actions);
 }
 
-
-
 void PrepareBatchGraph::SetupPredAll(std::vector<int> idxes,
                            std::vector< std::shared_ptr<Graph> > g_list,
                            std::vector< std::vector<int> > covered)
@@ -259,9 +265,10 @@ void PrepareBatchGraph::SetupPredAll(std::vector<int> idxes,
 }
 
 
-
-std::vector<std::shared_ptr<sparseMatrix>> n2n_construct(GraphStruct* graph, int aggregatorID)
+std::vector<std::shared_ptr<sparseMatrix>> PrepareBatchGraph::n2n_construct(GraphStruct* graph, int aggregatorID)
 // defines aggregation of nodefeatures
+// computes both the block laplacian as well as the block aggregation matrix
+// also sums edge weights of node neighborhoods and saves them into vector
 {
     //aggregatorID = 0 sum
     //aggregatorID = 1 mean
@@ -276,6 +283,7 @@ std::vector<std::shared_ptr<sparseMatrix>> n2n_construct(GraphStruct* graph, int
     result_laplacian->rowNum = graph->num_nodes;
     result_laplacian->colNum = graph->num_nodes;
 
+    double edge_weight_sum = 0;
 	for (int i = 0; i < (int)graph->num_nodes; ++i)
 	{
 		// list of all incoming edges of the corresponding node
@@ -289,84 +297,85 @@ std::vector<std::shared_ptr<sparseMatrix>> n2n_construct(GraphStruct* graph, int
             result_laplacian->rowIndex.push_back(i);
 		    result_laplacian->colIndex.push_back(i);
         }
-
+        edge_weight_sum = 0;
 		for (int j = 0; j < (int)list.size(); ++j)
 		{
-		    switch(aggregatorID){
-		       case 0:
-		       {
-                   result->value.push_back(1.0);
-                   break;
-		       }
-		       case 1:
-		       {
-                   result->value.push_back(1.0/(double)list.size());
-                   break;
-		       }
-		       case 2:
-		       {
-                   int neighborDegree = (int)graph->in_edges->head[list[j].second].size();
-                   int selfDegree = (int)list.size();
-                   double norm = sqrt((double)(neighborDegree+1))*sqrt((double)(selfDegree+1));
-                   result->value.push_back(1.0/norm);
-                   break;
-		       }
-               case 3:
-		       {
-                   result->value.push_back(1.0);
-                   break;
-		       }
-		       default:
-		          break;
+		    switch(aggregatorID)
+            {
+		        case 0:
+		        {
+                    result->value.push_back(1.0);
+                    break;
+		        }
+		        case 1:
+		        {
+                    result->value.push_back(1.0/(double)list.size());
+                    break;
+		        }
+		        case 2:
+		        {
+                    int neighborDegree = (int)graph->in_edges->head[list[j].second].size();
+                    int selfDegree = (int)list.size();
+                    double norm = sqrt((double)(neighborDegree+1))*sqrt((double)(selfDegree+1));
+                    result->value.push_back(1.0/norm);
+                    break;
+		        }
+                case 3:
+		        {
+                    result->value.push_back(sqrt(1/graph->edge_weights->head[i][j]));
+                    break;
+		        }
+		        default:
+		            break;
 		    }
-
+            // add edge weight to the sum for that specific node
+            edge_weight_sum += graph->edge_weights->head[i][j];
             // push back the node index
             result->rowIndex.push_back(i);
+            // printf("row_index: %d, col_index: %d\n", i, list[j].second);
+
             // and the neighbour node index corresponding to the jth incoming edge for node i
             result->colIndex.push_back(list[j].second);
-
             result_laplacian->value.push_back(-1.0);
 		    result_laplacian->rowIndex.push_back(i);
 		    result_laplacian->colIndex.push_back(list[j].second);
 
 		}
+        // add the sum of all edge weights to neighbouring nodes
+        edge_sum.push_back(edge_weight_sum);
 	}
 	resultList[0] = result;
 	resultList[1] = result_laplacian;
     return resultList;
 }
 
-std::shared_ptr<sparseMatrix> e2n_construct(GraphStruct* graph)
-// not used in the current code
+std::shared_ptr<sparseMatrix> subg_construct(GraphStruct* graph, std::vector<std::pair<int,int>>& subgraph_id_span)
 {
-    std::shared_ptr<sparseMatrix> result = std::shared_ptr<sparseMatrix>(new sparseMatrix());
-    result->rowNum = graph->num_nodes;
-    result->colNum = graph->num_edges;
-	for (int i = 0; i < (int)graph->num_nodes; ++i)
+    std::shared_ptr<sparseMatrix> result =std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    result->rowNum = graph->num_subgraph;
+    result->colNum = graph->num_nodes;
+
+    subgraph_id_span.clear();
+    int start = 0;
+    int end = 0;
+	for (int i = 0; i < (int)graph->num_subgraph; ++i)
 	{
-        auto& list = graph->in_edges->head[i];
+
+		auto& list = graph->subgraph->head[i];
+        end  = start + list.size() - 1;
 		for (int j = 0; j < (int)list.size(); ++j)
 		{
             result->value.push_back(1.0);
             result->rowIndex.push_back(i);
-            result->colIndex.push_back(list[j].first);
+            result->colIndex.push_back(list[j]);
 		}
-	}
-    return result;
-}
-
-std::shared_ptr<sparseMatrix> n2e_construct(GraphStruct* graph)
-// not used in current code
-{
-    std::shared_ptr<sparseMatrix> result =std::shared_ptr<sparseMatrix>(new sparseMatrix());
-    result->rowNum = graph->num_edges;
-    result->colNum = graph->num_nodes;
-
-	for (int i = 0; i < (int)graph->num_edges; ++i)
-	{
-        result->value.push_back(1.0);
-        result->rowIndex.push_back(i);
-        result->colIndex.push_back(graph->edge_list[i].first);
+		if (list.size() > 0){
+		    subgraph_id_span.push_back(std::make_pair(start, end));
+		}
+		else{
+		    subgraph_id_span.push_back(std::make_pair(graph->num_nodes, graph->num_nodes));
+		}
+		start = end + 1 ;
 	}
     return result;
 }
@@ -393,33 +402,37 @@ std::shared_ptr<sparseMatrix> e2e_construct(GraphStruct* graph)
     return result;
 }
 
-std::shared_ptr<sparseMatrix> subg_construct(GraphStruct* graph, std::vector<std::pair<int,int>>& subgraph_id_span)
+std::shared_ptr<sparseMatrix> n2e_construct(GraphStruct* graph)
+// not used in current code
 {
-   std::shared_ptr<sparseMatrix> result =std::shared_ptr<sparseMatrix>(new sparseMatrix());
-    result->rowNum = graph->num_subgraph;
+    std::shared_ptr<sparseMatrix> result =std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    result->rowNum = graph->num_edges;
     result->colNum = graph->num_nodes;
 
-    subgraph_id_span.clear();
-    int start = 0;
-    int end = 0;
-	for (int i = 0; i < (int)graph->num_subgraph; ++i)
+	for (int i = 0; i < (int)graph->num_edges; ++i)
 	{
+        result->value.push_back(1.0);
+        result->rowIndex.push_back(i);
+        result->colIndex.push_back(graph->edge_list[i].first);
+	}
+    return result;
+}
 
-		auto& list = graph->subgraph->head[i];
-        end  = start + list.size() - 1;
+std::shared_ptr<sparseMatrix> e2n_construct(GraphStruct* graph)
+// not used in the current code
+{
+    std::shared_ptr<sparseMatrix> result = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    result->rowNum = graph->num_nodes;
+    result->colNum = graph->num_edges;
+	for (int i = 0; i < (int)graph->num_nodes; ++i)
+	{
+        auto& list = graph->in_edges->head[i];
 		for (int j = 0; j < (int)list.size(); ++j)
 		{
             result->value.push_back(1.0);
             result->rowIndex.push_back(i);
-            result->colIndex.push_back(list[j]);
+            result->colIndex.push_back(list[j].first);
 		}
-		if(list.size()>0){
-		    subgraph_id_span.push_back(std::make_pair(start,end));
-		}
-		else{
-		    subgraph_id_span.push_back(std::make_pair(graph->num_nodes,graph->num_nodes));
-		}
-		start = end +1 ;
 	}
     return result;
 }

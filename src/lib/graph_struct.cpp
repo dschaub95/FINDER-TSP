@@ -47,14 +47,15 @@ void LinkedTable<T>::Resize(int new_n)
 }
 
 template class LinkedTable<int>;
+template class LinkedTable<double>;
 template class LinkedTable< std::pair<int, int> >;
 
 GraphStruct::GraphStruct()
 {
 	out_edges = new LinkedTable< std::pair<int, int> >();
     in_edges = new LinkedTable< std::pair<int, int> >();
+	edge_weights = new LinkedTable< double >();
 	subgraph = new LinkedTable< int >();
-	edge_weights.clear();
     edge_list.clear();
 }
 
@@ -62,16 +63,17 @@ GraphStruct::~GraphStruct()
 {
 	delete out_edges;
     delete in_edges;
+	delete edge_weights;
 	delete subgraph;
 }
 
 void GraphStruct::AddEdge(int idx, int x, int y, double weight)
 {
     out_edges->AddEntry(x, std::pair<int, int>(idx, y));
-    in_edges->AddEntry(y, std::pair<int, int>(idx, x));         
+    in_edges->AddEntry(y, std::pair<int, int>(idx, x));
+	edge_weights->AddEntry(y, weight);         
 	num_edges++;
     edge_list.push_back(std::make_pair(x, y));
-	edge_weights.push_back(weight);
     assert(num_edges == edge_list.size());
     assert(num_edges - 1 == (unsigned)idx);
 }

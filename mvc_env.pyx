@@ -26,6 +26,7 @@ cdef class py_MvcEnv:
         deref(self.inner_Graph).edge_list = _g.edge_list
         deref(self.inner_Graph).adj_list = _g.adj_list
         deref(self.inner_Graph).edge_weights = _g.edge_weights
+        deref(self.inner_Graph).node_feats = _g.node_feats
         deref(self.inner_MvcEnv).s0(self.inner_Graph)
 
     def step(self,int a):
@@ -105,16 +106,24 @@ cdef class py_MvcEnv:
         num_edges = graph1.num_edges    #得到Graph对象的连边个数
         edge_list = graph1.edge_list
         edge_weights = graph1.edge_weights
+        node_feats = graph1.node_feats
 
         cint_edges_from = np.zeros([num_edges],dtype=np.int)
         cint_edges_to = np.zeros([num_edges],dtype=np.int)
         cdouble_edge_weights = np.zeros([num_edges], dtype=np.double)
+        cdouble_vec_node_feats = np.zeros([num_nodes, 2], dtype=np.double)
+        # print(num_nodes)
         cdef int i
         for i in range(num_edges):
             cint_edges_from[i] = edge_list[i].first
             cint_edges_to[i] = edge_list[i].second
             cdouble_edge_weights[i] = edge_weights[i]
-        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights)
+        cdef int j
+        cdef int k
+        for j in range(num_nodes):
+             cdouble_vec_node_feats[j,:] = node_feats[j]
+        # print("test:", cdouble_vec_node_feats)
+        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights, cdouble_vec_node_feats)
 
 
     # cdef reshape_Graph(self, int _num_nodes, int _num_edges, int[:] edges_from, int[:] edges_to):

@@ -55,6 +55,7 @@ cdef class py_PrepareBatchGraph:
             deref(inner_Graph).edge_list = _g.edge_list
             deref(inner_Graph).adj_list = _g.adj_list
             deref(inner_Graph).edge_weights = _g.edge_weights
+            deref(inner_Graph).node_feats = _g.node_feats
             inner_glist.push_back(inner_Graph)
 
         cdef int *refint = <int*>malloc(len(actions)*sizeof(int))
@@ -75,6 +76,7 @@ cdef class py_PrepareBatchGraph:
             deref(inner_Graph).edge_list = _g.edge_list
             deref(inner_Graph).adj_list = _g.adj_list
             deref(inner_Graph).edge_weights = _g.edge_weights
+            deref(inner_Graph).node_feats = _g.node_feats
             inner_glist.push_back(inner_Graph)
         deref(self.inner_PrepareBatchGraph).SetupPredAll(idxes,inner_glist,covered)
 
@@ -86,7 +88,6 @@ cdef class py_PrepareBatchGraph:
     def rep_global(self):
         matrix = deref(deref(self.inner_PrepareBatchGraph).rep_global)
         return self.ConvertSparseToTensor(matrix)
-        #return coo_matrix((data, (rowIndex,colIndex)), shape=(rowNum,colNum))
     @property
     def n2nsum_param(self):
         matrix = deref(deref(self.inner_PrepareBatchGraph).n2nsum_param)
@@ -105,14 +106,16 @@ cdef class py_PrepareBatchGraph:
     @property
     def subgraph_id_span(self):
         return deref(self.inner_PrepareBatchGraph).subgraph_id_span
+    
     @property
     def aux_feat(self):
         return deref(self.inner_PrepareBatchGraph).aux_feat
-
     @property
-    def node_feat(self):
-        return deref(self.inner_PrepareBatchGraph).node_feat
-
+    def node_feats(self):
+        return deref(self.inner_PrepareBatchGraph).node_feats
+    @property
+    def edge_sum(self):
+        return deref(self.inner_PrepareBatchGraph).edge_sum
     @property
     def aggregatorID(self):
         return deref(self.inner_PrepareBatchGraph).aggregatorID
@@ -120,13 +123,13 @@ cdef class py_PrepareBatchGraph:
     def avail_act_cnt(self):
         return deref(self.inner_PrepareBatchGraph).avail_act_cnt
 
-    cdef ConvertSparseToTensor(self,sparseMatrix matrix):
+    cdef ConvertSparseToTensor(self, sparseMatrix matrix):
 
-        rowIndex= matrix.rowIndex
-        colIndex= matrix.colIndex
-        data= matrix.value
-        rowNum= matrix.rowNum
-        colNum= matrix.colNum
+        rowIndex = matrix.rowIndex
+        colIndex = matrix.colIndex
+        data = matrix.value
+        rowNum = matrix.rowNum
+        colNum = matrix.colNum
         indices = np.mat([rowIndex, colIndex]).transpose()
         return tf.SparseTensorValue(indices, data, (rowNum,colNum))
 

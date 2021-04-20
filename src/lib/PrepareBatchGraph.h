@@ -43,23 +43,26 @@ public:
     std::shared_ptr<sparseMatrix> n2nsum_param;
     std::shared_ptr<sparseMatrix> laplacian_param;
     std::shared_ptr<sparseMatrix> subgsum_param;
-    std::vector< std::vector<int> > idx_map_list;
-    std::vector<std::pair<int,int>> subgraph_id_span;
-    std::vector< std::vector<double> > aux_feat;
-    std::vector< std::vector<double> > node_feat;
+    std::vector< std::vector< int > > idx_map_list;
+    std::vector< std::pair< int,int > > subgraph_id_span;
+    std::vector< std::vector< double > > aux_feat;
+    std::vector< std::vector< double > > node_feats;
+    std::vector< double > edge_sum;
     GraphStruct graph;
-    std::vector<int> avail_act_cnt;
+    std::vector< int > avail_act_cnt;
     int aggregatorID;
+
+    std::vector<std::shared_ptr<sparseMatrix>> n2n_construct(GraphStruct* graph, int aggregatorID);
 };
 
-std::vector<std::shared_ptr<sparseMatrix>> n2n_construct(GraphStruct* graph, int aggregatorID);
+// std::vector<std::shared_ptr<sparseMatrix>> n2n_construct(GraphStruct* graph, int aggregatorID);
+
+std::shared_ptr<sparseMatrix> subg_construct(GraphStruct* graph, std::vector<std::pair<int,int>>& subgraph_id_span);
 
 std::shared_ptr<sparseMatrix> e2n_construct(GraphStruct* graph);
 
 std::shared_ptr<sparseMatrix> n2e_construct(GraphStruct* graph);
 
 std::shared_ptr<sparseMatrix> e2e_construct(GraphStruct* graph);
-
-std::shared_ptr<sparseMatrix> subg_construct(GraphStruct* graph, std::vector<std::pair<int,int>>& subgraph_id_span);
 
 #endif

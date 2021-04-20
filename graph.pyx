@@ -15,7 +15,7 @@ import numpy as np
 cdef class py_Graph:
     cdef shared_ptr[Graph] inner_graph#使用unique_ptr优于shared_ptr
     #__cinit__会在__init__之前被调用
-    def __cinit__(self,*arg):
+    def __cinit__(self, *arg):
         '''doing something before python calls the __init__.
         C/C++ objects of cdef must be initialized inside __cinit__, otherwise no memory is allocated for them
         Can take arguments and use python's variable argument model to implement function overloading-like functionality.。'''
@@ -28,25 +28,22 @@ cdef class py_Graph:
         cdef int[:] edges_from
         cdef int[:] edges_to
         cdef double[:] edge_weights
-        if len(arg)==0:
+        cdef double[:,:] node_feats
+        
+        if len(arg) == 0:
             #这两行代码为了防止内存没有初始化，没有实际意义
-            deref(self.inner_graph).num_edges=0
-            deref(self.inner_graph).num_nodes=0
-        # elif len(arg)==4:
-        #     _num_nodes=arg[0]
-        #     _num_edges=arg[1]
-        #     edges_from = np.array([int(x) for x in arg[2]], dtype=np.int32)
-        #     edges_to = np.array([int(x) for x in arg[3]], dtype=np.int32)
-        #     self.reshape_Graph(_num_nodes,  _num_edges,  edges_from,  edges_to)
-        elif len(arg) == 5:
+            deref(self.inner_graph).num_edges = 0
+            deref(self.inner_graph).num_nodes = 0
+        elif len(arg) == 6:
             _num_nodes=arg[0]
             _num_edges=arg[1]
             edges_from = np.array([int(x) for x in arg[2]], dtype=np.int32)
             edges_to = np.array([int(x) for x in arg[3]], dtype=np.int32)
             edge_weights = np.array([x for x in arg[4]], dtype=np.double)
-            self.reshape_Graph(_num_nodes,  _num_edges,  edges_from,  edges_to, edge_weights)   
+            node_feats = np.array([x for x in arg[5]], dtype=np.double)
+            self.reshape_Graph(_num_nodes,  _num_edges,  edges_from,  edges_to, edge_weights, node_feats)   
         else:
-            print('Error: py_Graph class was not initialized successfully because the number of parameters provided did not match, and the number of parameters was not 0 or 5.')
+            print('Error: py_Graph class was not initialized successfully because the number of parameters provided did not match, and the number of parameters was not 0 or 6.')
     # def __dealloc__(self):
     #     if self.inner_graph != NULL:
     #         self.inner_graph.reset()
@@ -75,16 +72,22 @@ cdef class py_Graph:
     @property
     def edge_weights(self):
         return deref(self.inner_graph).edge_weights
+    
+    @property
+    def node_feats(self):
+        return deref(self.inner_graph).node_feats
 
     def getEdgeWeight(self, int start_node, int end_node):
         return deref(self.inner_graph).getEdgeWeight(start_node, end_node)
 
-    cdef reshape_Graph(self, int _num_nodes, int _num_edges, int[:] edges_from, int[:] edges_to, double[:] edge_weights):
+    cdef reshape_Graph(self, int _num_nodes, int _num_edges, int[:] edges_from, int[:] edges_to, double[:] edge_weights, double[:,:] node_feats):
         cdef int *cint_edges_from = <int*>malloc(_num_edges*sizeof(int))
         cdef int *cint_edges_to = <int*>malloc(_num_edges*sizeof(int))
         # tsp change
         cdef double *cdouble_edge_weights = <double*>malloc(_num_edges*sizeof(double))
+        cdef double **cdouble_vec_node_feats = <double**>malloc(_num_nodes*sizeof(double*))
         cdef int i
+        # print("node feats 0", node_feats[0][0], node_feats[0][1])
         for i in range(_num_edges):
             cint_edges_from[i] = edges_from[i]
         for i in range(_num_edges):
@@ -92,15 +95,19 @@ cdef class py_Graph:
         # tsp change
         for i in range(_num_edges):
             cdouble_edge_weights[i] = edge_weights[i]
+        for i in range(_num_nodes):
+            cdouble_vec_node_feats[i] = &node_feats[i, 0]
+        # print("sucessfully saved features")
         # graph constructor changed
-        self.inner_graph = shared_ptr[Graph](new Graph(_num_nodes, _num_edges, &cint_edges_from[0], &cint_edges_to[0], &cdouble_edge_weights[0]))
+        self.inner_graph = shared_ptr[Graph](new Graph(_num_nodes, _num_edges, &cint_edges_from[0], &cint_edges_to[0], &cdouble_edge_weights[0], &cdouble_vec_node_feats[0]))
         
         free(cint_edges_from)
         free(cint_edges_to)
         free(cdouble_edge_weights)
+        free(cdouble_vec_node_feats)
 
-    def reshape(self,int _num_nodes, int _num_edges, int[:] edges_from, int[:] edges_to, double[:] edge_weights):
-        self.reshape_Graph(_num_nodes, _num_edges, edges_from, edges_to, edge_weights)
+    # def reshape(self,int _num_nodes, int _num_edges, int[:] edges_from, int[:] edges_to, double[:] edge_weights):
+        # self.reshape_Graph(_num_nodes, _num_edges, edges_from, edges_to, edge_weights)
 
 
 cdef class py_GSet:
@@ -111,7 +118,7 @@ cdef class py_GSet:
     #     if self.inner_gset != NULL:
     #         self.inner_gset.reset()
     #         gc.collect()
-    def InsertGraph(self,int gid,py_Graph graph):
+    def InsertGraph(self, int gid, py_Graph graph):
         deref(self.inner_gset).InsertGraph(gid, graph.inner_graph)
         #self.InsertGraph(gid,graph.inner_graph)
 
@@ -134,16 +141,21 @@ cdef class py_GSet:
         num_edges = graph.num_edges    #得到Graph对象的连边个数
         edge_list = graph.edge_list
         edge_weights = graph.edge_weights
+        node_feats = graph.node_feats
         
         cint_edges_from = np.zeros([num_edges],dtype=np.int)
         cint_edges_to = np.zeros([num_edges],dtype=np.int)
         cdouble_edge_weights = np.zeros([num_edges], dtype=np.double)
+        cdouble_vec_node_feats = np.zeros([num_nodes, 2], dtype=np.double)
         
         cdef int i
         for i in range(num_edges):
-            cint_edges_from[i]=edge_list[i].first
-            cint_edges_to[i] =edge_list[i].second
+            cint_edges_from[i]= edge_list[i].first
+            cint_edges_to[i] = edge_list[i].second
             cdouble_edge_weights[i] = edge_weights[i]
-        return py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights)
+        cdef int j
+        for j in range(num_nodes):
+            cdouble_vec_node_feats[j,:] = node_feats[j]
+        return py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights, cdouble_vec_node_feats)
 
 

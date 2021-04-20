@@ -44,10 +44,13 @@ cdef class py_ReplaySample:
         num_edges = graph1.num_edges    #得到Graph对象的连边个数
         edge_list = graph1.edge_list
         edge_weights = graph1.edge_weights
+        node_feats = graph1.node_feats
         
         cint_edges_from = np.zeros([num_edges],dtype=np.int)
         cint_edges_to = np.zeros([num_edges],dtype=np.int)
         cdouble_edge_weights = np.zeros([num_edges], dtype=np.double)
+        cdouble_vec_node_feats = np.zeros([num_nodes, 2], dtype=np.double)
+        
         cdef int i
         # print("saving data to cvectors..")
         for i in range(num_edges):
@@ -55,9 +58,11 @@ cdef class py_ReplaySample:
             cint_edges_to[i] = edge_list[i].second
             #print("saving", i, "th edge weight")
             cdouble_edge_weights[i] = edge_weights[i]
-        
+        cdef int j
+        for j in range(num_nodes):
+            cdouble_vec_node_feats[j,:] = node_feats[j]
         # print("saved data to cvectors")
-        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights)
+        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights, cdouble_vec_node_feats)
 
 cdef class py_NStepReplayMem:
     cdef shared_ptr[NStepReplayMem] inner_NStepReplayMem
@@ -87,15 +92,16 @@ cdef class py_NStepReplayMem:
     #         gc.collect()
 
 
-    def Add(self,mvcenv,int nstep):
+    def Add(self, mvcenv, int nstep):
         self.inner_Graph =shared_ptr[Graph](new Graph())
-        # g = self.GenNetwork(mvcenv.graph)
         g = mvcenv.graph
         deref(self.inner_Graph).num_nodes= g.num_nodes
         deref(self.inner_Graph).num_edges=g.num_edges
         deref(self.inner_Graph).edge_list=g.edge_list
         deref(self.inner_Graph).adj_list=g.adj_list
         deref(self.inner_Graph).edge_weights=g.edge_weights
+        deref(self.inner_Graph).node_feats=g.node_feats
+        
         self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(mvcenv.norm))
         deref(self.inner_MvcEnv).norm = mvcenv.norm
         deref(self.inner_MvcEnv).graph = self.inner_Graph
@@ -153,29 +159,19 @@ cdef class py_NStepReplayMem:
         num_edges = graph1.num_edges    #得到Graph对象的连边个数
         edge_list = graph1.edge_list
         edge_weights = graph1.edge_weights
+        node_feats = graph1.node_feats
         
         cint_edges_from = np.zeros([num_edges],dtype=np.int)
         cint_edges_to = np.zeros([num_edges],dtype=np.int)
         cdouble_edge_weights = np.zeros([num_edges], dtype=np.double)
+        cdouble_vec_node_feats = np.zeros([num_nodes, 2], dtype=np.double)
 
         cdef int i
         for i in range(num_edges):
             cint_edges_from[i] = edge_list[i].first
             cint_edges_to[i] = edge_list[i].second
             cdouble_edge_weights[i] = edge_weights[i]
-        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights)
-
-    def GenNetwork(self, g):    #networkx2four
-        # transforms the networkx graph object into graph object using external pyx module
-        nodes = g.nodes()
-        edges = g.edges()
-        if len(edges) > 0:
-            a, b = zip(*edges) 
-            A = np.array(a)
-            B = np.array(b)
-            W = np.array([g[n][m]['weight'] for n, m in zip(a, b)])
-        else:
-            A = np.array([0])
-            B = np.array([0])
-            W = np.array([0])
-        return graph.py_Graph(len(nodes), len(edges), A, B, W)
+        cdef int j
+        for j in range(num_nodes):
+            cdouble_vec_node_feats[j,:] = node_feats[j]
+        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights, cdouble_vec_node_feats)

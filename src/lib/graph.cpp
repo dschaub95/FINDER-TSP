@@ -5,11 +5,13 @@
 #include <iterator>
 #include "stdio.h"
 
+
 Graph::Graph() : num_nodes(0), num_edges(0)
 {
     edge_list.clear();
     adj_list.clear();
     edge_weights.clear();
+    node_feats.clear();
 }
 
 Graph::~Graph()
@@ -17,20 +19,37 @@ Graph::~Graph()
     edge_list.clear();
     adj_list.clear();
     edge_weights.clear();
+    node_feats.clear();
     num_nodes = 0;
     num_edges = 0;
 }
 
-Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, const int* edges_to, const double* _edge_weights)
+Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, const int* edges_to, const double* _edge_weights, double** _node_feats)
         : num_nodes(_num_nodes), num_edges(_num_edges)
 {
     edge_list.resize(num_edges);
     adj_list.resize(num_nodes);
+    edge_weights.resize(num_edges);
+   
+    // get number of node features per node
+    
+    node_feats.resize(num_nodes);
     //tsp change
     // printf("Clearing edge weights list\n");
     edge_weights.clear();
+
     for (int i = 0; i < num_nodes; ++i)
+    {
         adj_list[i].clear();
+        // save node features, hard coded 2 for now
+        node_feats[i].resize(2);
+        node_feats[i].clear();
+        for (int j = 0; j < 2; ++j)
+        {
+            node_feats[i].push_back(_node_feats[i][j]);
+        }
+    }
+        
     for (int i = 0; i < num_edges; ++i)
     {
         int x = edges_from[i], y = edges_to[i];
@@ -39,6 +58,7 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
         edge_list[i] = std::make_pair(edges_from[i], edges_to[i]);
         edge_weights.push_back(_edge_weights[i]);
     }
+    // printf("node_feats: %f, %f \n", node_feats[0][0], node_feats[0][1]);
     // printf("Sucessfully added %d elements to edge weights list for a graph of size %d\n", (int)edge_weights.size(), num_nodes);
     //printf("edge_weight: %f\n", edge_weights[0]);
 }
