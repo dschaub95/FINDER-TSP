@@ -50,7 +50,7 @@ void NStepReplayMem::Add(std::shared_ptr<Graph> g,
     current = (current + 1) % memory_size; 
 }
 
-void NStepReplayMem::Add(std::shared_ptr<MvcEnv> env,int n_step)
+void NStepReplayMem::Add(std::shared_ptr<MvcEnv> env, int n_step)
 {
     assert(env->isTerminal());
     // number of steps taken until terminal state is reached
@@ -61,14 +61,21 @@ void NStepReplayMem::Add(std::shared_ptr<MvcEnv> env,int n_step)
     // calculate sum of rewards --> integral over CN score with node cost at x axis --> maximal at start
     env->sum_rewards[num_steps - 1] = env->reward_seq[num_steps - 1];
     for (int i = num_steps - 1; i >= 0; --i)
+    {
         if (i < num_steps - 1)
+        {
             env->sum_rewards[i] = env->sum_rewards[i + 1] + env->reward_seq[i];
+        }
+        
+    }
+        
+            
     // printf("reward_seq start = %f \n", env->reward_seq[0]);
     // printf("reward_seq end = %f \n", env->reward_seq[num_steps-1]);
     // printf("reward_sum end = %f \n", env->sum_rewards[num_steps-1]);
     // printf("reward_sum start = %f \n", env->sum_rewards[0]);
     
-    // add all nstep transitions for that sample
+    // add all nstep transitions for that sample, exclude the first action as it is set to 0 by default
     for (int i = 0; i < num_steps; ++i)
     {
         bool term_t = false;
@@ -81,7 +88,9 @@ void NStepReplayMem::Add(std::shared_ptr<MvcEnv> env,int n_step)
             s_prime = (env->action_list);
             
             term_t = true;
-        } else {
+        } 
+        else 
+        {
             // set reward to be the integral from current step to the next 
             cur_r = env->sum_rewards[i] - env->sum_rewards[i + n_step];
             s_prime = (env->state_seq[i + n_step]);

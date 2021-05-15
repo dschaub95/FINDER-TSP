@@ -14,7 +14,7 @@ public:
 
     ~MvcEnv();
 
-    void s0(std::shared_ptr<Graph> _g);
+    void s0(std::shared_ptr<Graph> _g, int _help_func);
 
     double step(int a);
 
@@ -24,19 +24,19 @@ public:
 
     bool isTerminal();
     
+    double add_node(int new_node);
+
     double getReward();
-
-    double getRemainingCNDScore();
-
-    double CcNum;
 
     double getCurrentTourLength();
 
-    double getTourDifference();
+    double getTourDifference(int new_node);
 
     double getLastTourDifference();
 
     void printGraph();
+
+    int help_func;
 
     double norm;
 

@@ -1,11 +1,13 @@
 *.cpp
 !src/*/*.cpp
 models
+best_models
 *.c
 # Docker stuff
 data/*
 !data/
-
+test_sets
+valid_sets
 .vscode/
 
 

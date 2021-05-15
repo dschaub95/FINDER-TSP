@@ -2,8 +2,8 @@
 from libcpp.memory cimport shared_ptr
 import numpy as np
 import graph
-from libc.stdlib cimport malloc
 from libc.stdlib cimport free
+from libc.stdlib cimport malloc
 from graph cimport Graph
 import tensorflow as tf
 from scipy.sparse import coo_matrix
@@ -38,13 +38,14 @@ cdef class py_sparseMatrix:
 cdef class py_PrepareBatchGraph:
     cdef shared_ptr[PrepareBatchGraph] inner_PrepareBatchGraph
     cdef sparseMatrix matrix
-    def __cinit__(self,aggregatorID):
-        self.inner_PrepareBatchGraph = shared_ptr[PrepareBatchGraph](new PrepareBatchGraph(aggregatorID))
+    def __cinit__(self, aggregatorID, node_init_dim, edge_init_dim, ignore_covered_edges, include_selected_nodes):
+        self.inner_PrepareBatchGraph = shared_ptr[PrepareBatchGraph](new PrepareBatchGraph(aggregatorID, node_init_dim, edge_init_dim, ignore_covered_edges, 
+                                                                                           include_selected_nodes))
     # def __dealloc__(self):
     #     if self.inner_PrepareBatchGraph != NULL:
     #         self.inner_PrepareBatchGraph.reset()
     #         gc.collect()
-    def SetupTrain(self,idxes,g_list,covered,list actions):
+    def SetupTrain(self, idxes, g_list,covered, list actions):
         cdef shared_ptr[Graph] inner_Graph
         cdef vector[shared_ptr[Graph]] inner_glist
         for _g in g_list:
@@ -65,7 +66,7 @@ cdef class py_PrepareBatchGraph:
         deref(self.inner_PrepareBatchGraph).SetupTrain(idxes, inner_glist, covered, refint)
         free(refint)
 
-    def SetupPredAll(self,idxes,g_list,covered):
+    def SetupPredAll(self, idxes, g_list, covered):
         cdef shared_ptr[Graph] inner_Graph
         cdef vector[shared_ptr[Graph]] inner_glist
         for _g in g_list:
@@ -101,18 +102,24 @@ cdef class py_PrepareBatchGraph:
         matrix = deref(deref(self.inner_PrepareBatchGraph).subgsum_param)
         return self.ConvertSparseToTensor(matrix)
     @property
+    def e2nsum_param(self):
+        matrix = deref(deref(self.inner_PrepareBatchGraph).e2nsum_param)
+        return self.ConvertSparseToTensor(matrix)
+    @property
     def idx_map_list(self):
         return deref(self.inner_PrepareBatchGraph).idx_map_list
     @property
     def subgraph_id_span(self):
         return deref(self.inner_PrepareBatchGraph).subgraph_id_span
-    
     @property
     def aux_feat(self):
         return deref(self.inner_PrepareBatchGraph).aux_feat
     @property
     def node_feats(self):
         return deref(self.inner_PrepareBatchGraph).node_feats
+    @property
+    def edge_feats(self):
+        return deref(self.inner_PrepareBatchGraph).edge_feats
     @property
     def edge_sum(self):
         return deref(self.inner_PrepareBatchGraph).edge_sum

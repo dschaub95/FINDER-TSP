@@ -12,18 +12,20 @@ cdef extern from "./src/lib/PrepareBatchGraph.h":
         int colNum
 
     cdef cppclass PrepareBatchGraph:
-        PrepareBatchGraph(int aggregatorID)except+
-        void SetupTrain(vector[int] idxes,vector[shared_ptr[Graph] ] g_list,vector[vector[int]] covered,const int* actions)except+
+        PrepareBatchGraph(int aggregatorID, int node_init_dim, int edge_init_dim, int ignore_covered_edges, int include_selected_nodes)except+
+        void SetupTrain(vector[int] idxes, vector[shared_ptr[Graph] ] g_list, vector[vector[int]] covered, const int* actions)except+
         void SetupPredAll(vector[int] idxes,vector[shared_ptr[Graph] ] g_list,vector[vector[int]] covered)except+
         shared_ptr[sparseMatrix] act_select
         shared_ptr[sparseMatrix] rep_global
         shared_ptr[sparseMatrix] n2nsum_param
         shared_ptr[sparseMatrix] laplacian_param
         shared_ptr[sparseMatrix] subgsum_param
+        shared_ptr[sparseMatrix] e2nsum_param
         vector[vector[int]]  idx_map_list
         vector[pair[int,int]] subgraph_id_span
         vector[vector[double]]  aux_feat
         vector[vector[double]]  node_feats
+        vector[vector[double]]  edge_feats
+        vector[vector[double]] edge_sum
         vector[int] avail_act_cnt
-        vector[double] edge_sum
         int aggregatorID

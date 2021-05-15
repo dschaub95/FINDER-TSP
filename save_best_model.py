@@ -6,11 +6,16 @@ import os
 from shutil import copy
 import datetime
 
-
-
-def save_best_model(dqn):
+def main():
+    print("Starting FINDER...")
+    dqn = FINDER()
+    
     print("Searching for best model...")
-    vcfile_path = None
+    try:
+        vcfile_path = str(sys.argv[1])
+    except:
+        print("no vcfile path specified, using default path...")
+        vcfile_path = None
     best_model, vcfile_path, min_tour_length = dqn.findModel(VCFile_path=vcfile_path)
     min_tour_length = ''.join(min_tour_length.split('.'))
     
@@ -69,14 +74,8 @@ def save_best_model(dqn):
     for file_path in file_paths:
         copy(file_path, target + file_path.split('/')[-1])
 
-
-def main():
-    print("Starting FINDER...")
-    dqn = FINDER()
-    dqn.Train()
-    if str(sys.argv[1]) == 'save':
-        save_best_model(dqn)
-
 if __name__=="__main__":
     main()
 
+
+    

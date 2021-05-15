@@ -16,9 +16,19 @@ sparseMatrix::~sparseMatrix()
     value.clear();
 }
 
- PrepareBatchGraph::PrepareBatchGraph(int _aggregatorID)
+ PrepareBatchGraph::PrepareBatchGraph(int _aggregatorID, int _node_init_dim, int _edge_init_dim, int _ignore_covered_edges, int _include_selected_nodes)
 {
     aggregatorID = _aggregatorID;
+    node_init_dim = _node_init_dim;
+    edge_init_dim = _edge_init_dim;
+    include_selected_nodes = _include_selected_nodes;
+    ignore_covered_edges = _ignore_covered_edges;
+    idx_map_list.clear();
+    node_feats.clear();
+    edge_feats.clear();
+    edge_sum.clear();
+    aux_feat.clear();
+    avail_act_cnt.clear();
 }
 
 PrepareBatchGraph::~PrepareBatchGraph()
@@ -28,33 +38,66 @@ PrepareBatchGraph::~PrepareBatchGraph()
     n2nsum_param = nullptr;
     subgsum_param = nullptr;
     laplacian_param = nullptr;
+    e2nsum_param = nullptr;
     idx_map_list.clear();
     node_feats.clear();
+    edge_feats.clear();
     edge_sum.clear();
     aux_feat.clear();
     avail_act_cnt.clear();
     aggregatorID = -1;
+    node_init_dim = -1;
+    edge_init_dim = -1;
+    ignore_covered_edges = -1;
+    include_selected_nodes = -1;
 }
 
-int PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int num, const int* covered, int& counter, int& twohop_number, int& threehop_number, std::vector<int>& idx_map)
+std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int num, const int* covered, int& counter, int& twohop_number, int& threehop_number, std::vector<int>& idx_map)
 // calculates number of available actions
 {
     std::set<int> c;
-
+    std::vector<int> resultList;
+    resultList.resize(2);
     idx_map.resize(g->num_nodes);
 
     for (int i = 0; i < g->num_nodes; ++i)
     {
         idx_map[i] = -1;
     }
-        
-    for (int i = 0; i < num; ++i)
+    
+    
+    int excluded_nodes = 0;
+    switch(include_selected_nodes)
     {
-        c.insert(covered[i]);  
-    }
-        
+        case 0:
+        {
+            // delete all nodes that have been selected until this point 
+            for (int i = 0; i < num; ++i)
+            {
+                c.insert(covered[i]);
+                excluded_nodes++;  
+            }
+            break;
+        }
+        case 1:
+        {
+            // include first and last selected node so it is available during network embedding
+            for (int i = 1; i < num-1; ++i)
+            {
+                c.insert(covered[i]);
+                excluded_nodes++;  
+            }
+            break;
+        }
+        case 2:
+        {
+            // keep all nodes and just change node features + edge features later depending on whether node was already chosen
+            break;
+        }
+        default:
+            break;
+    }    
     counter = 0;
-
     twohop_number = 0;
     threehop_number = 0;
     std::set<int> node_twohop_set;
@@ -64,15 +107,14 @@ int PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int num, const in
     // iterate over all edges
     for (auto& p : g->edge_list)
     {
-        // find all edges that are connected to at least one covered node
-        // printf("Edge: (%d, %d) \n", p.first, p.second);
+
+        // find all edges that are connected to no covered node
         if (c.count(p.first) || c.count(p.second))
         {
-            counter++;         
+            counter++;     
         } 
         else 
         {
-            // 
             if (idx_map[p.first] < 0)
             {
                 n++;
@@ -106,26 +148,25 @@ int PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int num, const in
             }
         }
     }
-    // printf("num nodes: %d \n", g->num_nodes);
-    // printf("n: %d \n", n);  
-    return n;
+    resultList[0] = n;
+    resultList[1] = excluded_nodes;
+    return resultList;
 }
 
 void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
-                           std::vector< std::shared_ptr<Graph> > g_list, 
-                           std::vector< std::vector<int> > covered, 
-                           const int* actions)
+                                        std::vector< std::shared_ptr<Graph> > g_list, 
+                                        std::vector< std::vector<int> > covered, 
+                                        const int* actions)
 {
     act_select = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     rep_global = std::shared_ptr<sparseMatrix>(new sparseMatrix());
-
     // idxes.size() = BATCHSIZE, vector of vectors
     idx_map_list.resize(idxes.size());
     // simple vector < int >
     avail_act_cnt.resize(idxes.size());
-
+    
     int node_cnt = 0;
-
+    int edge_cnt = 0;
     for (int i = 0; i < (int)idxes.size(); ++i)
     {   
         std::vector<double> temp_feat;
@@ -135,15 +176,16 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
         int counter;
         int twohop_number;
         int threehop_number;
-
+        int excluded_nodes;
         // save ratio of covered nodes compared to all nodes
         if (g->num_nodes)
         {
             temp_feat.push_back((double)covered[idxes[i]].size() / (double)g->num_nodes);
         }
         // calc counter, twohop_number and threehop_number + avail
-        avail_act_cnt[i] = GetStatusInfo(g, covered[idxes[i]].size(), covered[idxes[i]].data(), counter, twohop_number, threehop_number, idx_map_list[i]);
-
+        auto resultStatus = GetStatusInfo(g, covered[idxes[i]].size(), covered[idxes[i]].data(), counter, twohop_number, threehop_number, idx_map_list[i]);
+        avail_act_cnt[i] = resultStatus[0];
+        excluded_nodes = resultStatus[1];
         // save ratio of edges that are connected to at least one covered node and all edges
         if (g->edge_list.size())
         {
@@ -155,62 +197,91 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
         temp_feat.push_back(1.0);
 
         node_cnt += avail_act_cnt[i];
+        // calculate edge count
+        edge_cnt += avail_act_cnt[i] * (avail_act_cnt[i] - 1);
+        // ignore inner edges between nodes that have already been selected
+        if (ignore_covered_edges == 1)
+        {
+            edge_cnt -= (covered[idxes[i]].size() - excluded_nodes) * (covered[idxes[i]].size() - excluded_nodes - 1);
+        }
         aux_feat.push_back(temp_feat);
     }
     // (Batchsize, all available actions in all graphs)
     // prepare in and out edges size, and subgraphs(=remaining parts of the current graph)
+    // printf("Edge count calc: %d\n", edge_cnt);
     graph.Resize(idxes.size(), node_cnt);
-
+    edge_sum.resize(node_cnt, std::vector<double>(edge_init_dim, 1.0));
+    node_feats.resize(node_cnt, std::vector<double>(node_init_dim, 1.0));
+    edge_feats.resize(edge_cnt, std::vector<double>(edge_init_dim , 1.0));
     if (actions)
     {
         act_select->rowNum = idxes.size();
         act_select->colNum = node_cnt;
-    } else
-    {
-        rep_global->rowNum = node_cnt;
-        rep_global->colNum = idxes.size();
     }
-
+    rep_global->rowNum = node_cnt;
+    rep_global->colNum = idxes.size();
+    
     node_cnt = 0;
-    int edge_cnt = 0;
+    edge_cnt = 0;
     // make calculations on each graph in the batch
     for (int i = 0; i < (int)idxes.size(); ++i)
     {             
         auto g = g_list[idxes[i]];
         auto idx_map = idx_map_list[i];
-    
+        int start_node = -1;
+        int last_node = -1;
+        std::set<int> c;
+        // get start and last node info
+        for (int j = 0; j < (int)covered[idxes[i]].size(); ++j)
+        {
+            c.insert(covered[idxes[i]][j]);  
+        }
+        if (covered[idxes[i]].size() > 0)
+        {
+            int last_idx = covered[idxes[i]].size() - 1;
+            start_node = covered[idxes[i]][0];
+            last_node = covered[idxes[i]][last_idx];
+        }
         // extract info per node
         int t = 0;
         for (int j = 0; j < (int)g->num_nodes; ++j)
         {   
-            // maskes all node indices that are unaivalable
+            // masks all node indices that are unavailable
             if (idx_map[j] < 0)
             {
                 continue;
             }
             idx_map[j] = t;
-            
             // change in case of simple node weights can be adapted to capture node positions
-            std::vector<double> temp_node_feat;
-            // printf("Size node feats: %d", (int)sizeof(g->node_feats[0]));
+            // Node init feature pattern for available node: [x,y,1,1,1,1], last selected node: [x,y,0,1,1,1],
+            // selected nodes (between last and start): [x,y,0,0,1,1], start node: [x,y,0,0,0,1]
             for (int k = 0; k < 2; ++k)
             {
-                temp_node_feat.push_back(g->node_feats[j][k]);
+                node_feats[node_cnt + t][k] = g->node_feats[j][k];
             }
-            temp_node_feat.push_back(1.0);
-            node_feats.push_back(temp_node_feat);
-
-            graph.AddNode(i, node_cnt + t);
-            if (!actions)
+            if (c.count(j) && node_init_dim >= 4)
             {
-                rep_global->rowIndex.push_back(node_cnt + t);
-                rep_global->colIndex.push_back(i);
-                rep_global->value.push_back(1.0);
+                node_feats[node_cnt + t][2] = 0.0;
+                node_feats[node_cnt + t][3] = 1.0;
+                // zero means "available for selection"
+                if ((j == start_node) && (node_init_dim >= 5))
+                {
+                    node_feats[node_cnt + t][4] = 0.0;
+                }
+                else if (j == last_node)
+                {
+                    node_feats[node_cnt + t][3] = 1.0;
+                }
             }
+            graph.AddNode(i, node_cnt + t);
+            // needed for adding last and start node embeddings, other than that only needed in case !actions 
+            rep_global->rowIndex.push_back(node_cnt + t);
+            rep_global->colIndex.push_back(i);
+            rep_global->value.push_back(1.0);
+            
             t += 1;
         }
         assert(t == avail_act_cnt[i]);
-
         if (actions)
         {   
             auto act = actions[idxes[i]];
@@ -222,29 +293,55 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
         
         for (auto p : g->edge_list)
         {   
+            // check whether one node of the edge has been selected and removed from the remaining graph
             if (idx_map[p.first] < 0 || idx_map[p.second] < 0)
             {
                continue; 
             }
-                
+            // ignore inner edges between nodes that have already been selected
+            if (c.count(p.first) && c.count(p.second))
+            {
+                if (ignore_covered_edges == 1)
+                {
+                    continue;
+                }
+            }
             auto x = idx_map[p.first] + node_cnt, y = idx_map[p.second] + node_cnt;
             // add code to determine edge weight corresponding to the current edge
             double edge_weight = g->getEdgeWeight(p.first, p.second);
             // printf("Index x: %d, Index y: %d\n", x, y);
             graph.AddEdge(edge_cnt, x, y, edge_weight);
+            edge_feats[edge_cnt][0] = edge_weight;
+            if (edge_init_dim > 1)
+            {
+                edge_feats[edge_cnt][1] = c.count(p.first) ^ c.count(p.second);
+                edge_feats[edge_cnt][2] = c.count(p.first);
+            }
+            
+            // edge_feats[edge_cnt][3] = y;
+            // edge_feats[edge_cnt][4] = x;
             edge_cnt += 1;
             graph.AddEdge(edge_cnt, y, x, edge_weight);
+            edge_feats[edge_cnt][0] = edge_weight;
+            if (edge_init_dim > 1)
+            {
+                edge_feats[edge_cnt][1] = c.count(p.first) ^ c.count(p.second);
+                edge_feats[edge_cnt][2] = c.count(p.second);
+            }
+            
+            // edge_feats[edge_cnt][3] = y;
+            // edge_feats[edge_cnt][4] = x;
             edge_cnt += 1;
         }
         // add all available actions in the current state to the node count
         node_cnt += avail_act_cnt[i];
     }
     assert(node_cnt == (int)graph.num_nodes);
-
     auto result_list = n2n_construct(&graph, aggregatorID);
     n2nsum_param = result_list[0];
     laplacian_param = result_list[1];
     subgsum_param = subg_construct(&graph, subgraph_id_span);
+    e2nsum_param = e2n_construct(&graph);
 
 }
 
@@ -342,11 +439,31 @@ std::vector<std::shared_ptr<sparseMatrix>> PrepareBatchGraph::n2n_construct(Grap
 
 		}
         // add the sum of all edge weights to neighbouring nodes
-        edge_sum.push_back(edge_weight_sum);
+        edge_sum[i][0] = edge_weight_sum;
+        // node_feats[i][4] = edge_weight_sum;
 	}
 	resultList[0] = result;
 	resultList[1] = result_laplacian;
     return resultList;
+}
+
+std::shared_ptr<sparseMatrix> e2n_construct(GraphStruct* graph)
+// not used in the current code
+{
+    std::shared_ptr<sparseMatrix> result = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    result->rowNum = graph->num_nodes;
+    result->colNum = graph->num_edges;
+	for (int i = 0; i < (int)graph->num_nodes; ++i)
+	{
+        auto& list = graph->in_edges->head[i];
+		for (int j = 0; j < (int)list.size(); ++j)
+		{
+            result->value.push_back(1.0);
+            result->rowIndex.push_back(i);
+            result->colIndex.push_back(list[j].first);
+		}
+	}
+    return result;
 }
 
 std::shared_ptr<sparseMatrix> subg_construct(GraphStruct* graph, std::vector<std::pair<int,int>>& subgraph_id_span)
@@ -383,7 +500,7 @@ std::shared_ptr<sparseMatrix> subg_construct(GraphStruct* graph, std::vector<std
 std::shared_ptr<sparseMatrix> e2e_construct(GraphStruct* graph)
 // not used in current code
 {
-    std::shared_ptr<sparseMatrix> result =std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    std::shared_ptr<sparseMatrix> result = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     result->rowNum = graph->num_edges;
     result->colNum = graph->num_edges;
     for (int i = 0; i < (int)graph->num_edges; ++i)
@@ -418,21 +535,4 @@ std::shared_ptr<sparseMatrix> n2e_construct(GraphStruct* graph)
     return result;
 }
 
-std::shared_ptr<sparseMatrix> e2n_construct(GraphStruct* graph)
-// not used in the current code
-{
-    std::shared_ptr<sparseMatrix> result = std::shared_ptr<sparseMatrix>(new sparseMatrix());
-    result->rowNum = graph->num_nodes;
-    result->colNum = graph->num_edges;
-	for (int i = 0; i < (int)graph->num_nodes; ++i)
-	{
-        auto& list = graph->in_edges->head[i];
-		for (int j = 0; j < (int)list.size(); ++j)
-		{
-            result->value.push_back(1.0);
-            result->rowIndex.push_back(i);
-            result->colIndex.push_back(list[j].first);
-		}
-	}
-    return result;
-}
+

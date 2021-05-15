@@ -19,7 +19,7 @@ cdef class py_MvcEnv:
     #     if self.inner_Graph != NULL:
     #         self.inner_Graph.reset()
     #         gc.collect()
-    def s0(self,_g):
+    def s0(self, _g, int _help_func):
         self.inner_Graph = shared_ptr[Graph](new Graph())
         deref(self.inner_Graph).num_nodes = _g.num_nodes
         deref(self.inner_Graph).num_edges = _g.num_edges
@@ -27,9 +27,9 @@ cdef class py_MvcEnv:
         deref(self.inner_Graph).adj_list = _g.adj_list
         deref(self.inner_Graph).edge_weights = _g.edge_weights
         deref(self.inner_Graph).node_feats = _g.node_feats
-        deref(self.inner_MvcEnv).s0(self.inner_Graph)
+        deref(self.inner_MvcEnv).s0(self.inner_Graph, _help_func)
 
-    def step(self,int a):
+    def step(self, int a):
         return deref(self.inner_MvcEnv).step(a)
 
     def stepWithoutReward(self, int a):
@@ -44,20 +44,17 @@ cdef class py_MvcEnv:
     def isTerminal(self):
         return deref(self.inner_MvcEnv).isTerminal()
 
+    def add_node(self, int new_node):
+        return deref(self.inner_MvcEnv).add_node(new_node)
+
     def getReward(self):
         return deref(self.inner_MvcEnv).getReward()
 
-    # def getMaxConnectedNodesNum(self):
-    #     return deref(self.inner_MvcEnv).getMaxConnectedNodesNum()
-
-    def getRemainingCNDScore(self):
-        return deref(self.inner_MvcEnv).getRemainingCNDScore()
-
-    def getTourDifference(self):
-        return deref(self.inner_MvcEnv).getTourDifference()
-
     def getLastTourDifference(self):
         return deref(self.inner_MvcEnv).getLastTourDifference()
+
+    def getTourDifference(self, int new_node):
+        return deref(self.inner_MvcEnv).getTourDifference(new_node)
 
     @property
     def norm(self):
