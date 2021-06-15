@@ -23,7 +23,7 @@ MvcEnv::MvcEnv(double _norm)
     sum_rewards.clear();
     covered_set.clear();
     avail_list.clear();
-    }
+}
 
 MvcEnv::~MvcEnv()
 {
@@ -44,6 +44,8 @@ void MvcEnv::s0(std::shared_ptr<Graph> _g, int _help_func)
 {
     graph = _g;
     help_func = _help_func;
+    // make norm depend on specific graph
+    // if ((int)norm == -1) { norm = _g->num_nodes; }
     norm = _g->num_nodes;
     covered_set.clear();
     action_list.clear();
@@ -75,6 +77,7 @@ double MvcEnv::step(int a)
     }
     else
     {
+        // printf("Calculating tour difference without helper function..\n");
         r_t = getTourDifference(a);
         action_list.push_back(a);
         covered_set.insert(a);
@@ -105,10 +108,15 @@ void MvcEnv::stepWithoutReward(int a)
         covered_set.insert(a);
     }
     for (auto neigh : graph->adj_list[a])
+    {
         if (covered_set.count(neigh) == 0)
+        {
             numCoveredEdges++;
+        }
+    }
+        
+            
 }
-
 
 // random
 int MvcEnv::randomAction()
@@ -153,9 +161,9 @@ double MvcEnv::add_node(int new_node)
         {
             adj = action_list[i + 1]; 
         }
-        double cost = graph->getEdgeWeight(new_node, action_list[i])
-                      + graph->getEdgeWeight(new_node, adj)
-                      - graph->getEdgeWeight(action_list[i], adj);
+        double cost = graph->EdgeWeight[new_node][action_list[i]]
+                      + graph->EdgeWeight[new_node][adj]
+                      - graph->EdgeWeight[action_list[i]][adj];
         if (cost < cur_dist)
         {
             cur_dist = cost;
@@ -173,31 +181,13 @@ double MvcEnv::add_node(int new_node)
 double MvcEnv::getTourDifference(int new_node)
 {
     assert(graph);
+    
     int adj = action_list[0];
     int last_node = action_list[action_list.size()-1];
-    double cost = graph->getEdgeWeight(new_node, last_node)
-                  + graph->getEdgeWeight(new_node, adj)
-                  - graph->getEdgeWeight(last_node, adj); 
-    return sign * cost/norm;
-
-    // double previousLength = 0.0;
-    // double currentLength = 0.0;
-    // if ((int)action_list.size() > 2)
-    // {
-    //     // calc length of the last part of the current tour, ranging from second last node to the start node
-    //     currentLength += graph->getEdgeWeight(action_list[action_list.size()-1], action_list[0]);
-    //     currentLength += graph->getEdgeWeight(action_list[action_list.size()-2], action_list[action_list.size()-1]);
-
-    //     // calc length of the last part of the previous tour
-    //     previousLength += graph->getEdgeWeight(action_list[action_list.size()-2], action_list[0]);
-    // }
-    // else if ((int)action_list.size() == 2)
-    // {
-    //     // previous tour contains only one node
-    //     currentLength += graph->getEdgeWeight(action_list[action_list.size()-1], action_list[0]);
-    //     currentLength += graph->getEdgeWeight(action_list[action_list.size()-2], action_list[action_list.size()-1]);
-    // }
-    // return currentLength - previousLength;
+    double cost = graph->EdgeWeight[last_node][new_node]
+                  + graph->EdgeWeight[new_node][adj]
+                  - graph->EdgeWeight[last_node][adj]; 
+    return sign * cost / norm;
 }
 
 void MvcEnv::printGraph()
@@ -251,14 +241,14 @@ double MvcEnv::getLastTourDifference()
     
     // get name of the last remaining node
     int last_node = randomAction();
-    
+    int size = action_list.size();
     // calc length of the last part of the current tour, ranging from third last node to the start node
-    currentLength += graph->getEdgeWeight(action_list[action_list.size()-2], action_list[action_list.size()-1]);
-    currentLength += graph->getEdgeWeight(action_list[action_list.size()-1], last_node);
-    currentLength += graph->getEdgeWeight(last_node, action_list[0]);
+    currentLength += graph->EdgeWeight[action_list[size-2]][action_list[size-1]];
+    currentLength += graph->EdgeWeight[action_list[size-1]][last_node];
+    currentLength += graph->EdgeWeight[last_node][action_list[0]];
 
     // calc length of the last part of the previous tour
-    previousLength += graph->getEdgeWeight(action_list[action_list.size()-2], action_list[0]);
+    previousLength += graph->EdgeWeight[action_list[size-2]][action_list[0]];
   
     return currentLength - previousLength;
 }

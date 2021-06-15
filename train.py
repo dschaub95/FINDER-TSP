@@ -8,7 +8,7 @@ import datetime
 
 
 
-def save_best_model(dqn):
+def save_best_model(dqn, config_path):
     print("Searching for best model...")
     vcfile_path = None
     best_model, vcfile_path, min_tour_length = dqn.findModel(VCFile_path=vcfile_path)
@@ -44,6 +44,9 @@ def save_best_model(dqn):
     vcfile_name = '.'.join(vcfile_name)
     copy(vcfile_path, target + vcfile_name)
 
+    print("Saving config file...")
+    copy(config_path, target + config_path.split('/')[-1].split('_')[-1])
+
     print("Saving hyperparameters and architecture...")
     code_file = open('FINDER.pyx', 'r')
     code_lines = code_file.readlines()
@@ -69,13 +72,13 @@ def save_best_model(dqn):
     for file_path in file_paths:
         copy(file_path, target + file_path.split('/')[-1])
 
-
 def main():
     print("Starting FINDER...")
-    dqn = FINDER()
+    config_path = 'train_configs/default_config.txt'
+    dqn = FINDER(config_path=config_path)
     dqn.Train()
     if str(sys.argv[1]) == 'save':
-        save_best_model(dqn)
+        save_best_model(dqn, config_path=config_path)
 
 if __name__=="__main__":
     main()

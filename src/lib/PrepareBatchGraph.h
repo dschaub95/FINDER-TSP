@@ -24,7 +24,7 @@ class sparseMatrix
 
 class PrepareBatchGraph{
 public:
-    PrepareBatchGraph(int _aggregatorID, int _node_init_dim, int _edge_init_dim, int _ignore_covered_edges, int _include_selected_nodes);
+    PrepareBatchGraph(int _aggregatorID, int _node_init_dim, int _edge_init_dim, int _ignore_covered_edges, int _include_selected_nodes, int embeddingMethod);
     ~PrepareBatchGraph();
     void SetupGraphInput(std::vector<int> idxes,
                          std::vector< std::shared_ptr<Graph> > g_list,
@@ -42,8 +42,11 @@ public:
     std::shared_ptr<sparseMatrix> rep_global;
     std::shared_ptr<sparseMatrix> n2nsum_param;
     std::shared_ptr<sparseMatrix> e2nsum_param;
+    std::shared_ptr<sparseMatrix> n2esum_param;
     std::shared_ptr<sparseMatrix> laplacian_param;
     std::shared_ptr<sparseMatrix> subgsum_param;
+    std::shared_ptr<sparseMatrix> start_param;
+    std::shared_ptr<sparseMatrix> end_param;
     std::vector< std::vector< int > > idx_map_list;
     std::vector< std::pair< int,int > > subgraph_id_span;
     std::vector< std::vector< double > > aux_feat;
@@ -56,6 +59,7 @@ public:
     int aggregatorID;
     int ignore_covered_edges;
     int include_selected_nodes;
+    int embeddingMethod;
     int node_init_dim; 
     int edge_init_dim;
 

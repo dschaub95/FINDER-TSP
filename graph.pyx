@@ -76,9 +76,10 @@ cdef class py_Graph:
     @property
     def node_feats(self):
         return deref(self.inner_graph).node_feats
-
-    def getEdgeWeight(self, int start_node, int end_node):
-        return deref(self.inner_graph).getEdgeWeight(start_node, end_node)
+    
+    @property
+    def EdgeWeight(self):
+        return deref(self.inner_graph).EdgeWeight
 
     cdef reshape_Graph(self, int _num_nodes, int _num_edges, int[:] edges_from, int[:] edges_to, double[:] edge_weights, double[:,:] node_feats):
         cdef int *cint_edges_from = <int*>malloc(_num_edges*sizeof(int))
@@ -142,7 +143,7 @@ cdef class py_GSet:
         edge_list = graph.edge_list
         edge_weights = graph.edge_weights
         node_feats = graph.node_feats
-        
+
         cint_edges_from = np.zeros([num_edges],dtype=np.int)
         cint_edges_to = np.zeros([num_edges],dtype=np.int)
         cdouble_edge_weights = np.zeros([num_edges], dtype=np.double)

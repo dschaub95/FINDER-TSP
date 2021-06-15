@@ -147,25 +147,21 @@ double Utils::getRobustness(std::shared_ptr<Graph> graph, std::vector<int> solut
 
 double Utils::getTourLength(std::shared_ptr<Graph> graph, std::vector<int> solution)
 {
-    // int solSum = std::accumulate(solution.begin(), solution.end(), decltype(solution)::value_type(0));
-    // printf("Solsum: %d\n", solSum);
-    // int missingNode = (graph->num_nodes + 1)*graph->num_nodes/2 - solSum;
-    // printf("Missing node: %d\n", missingNode);
-    
     double orig_node_num = (double) graph->num_nodes;
     double tourLength = 0.0;
+    int sol_size = solution.size();
     // make sure there are at least two nodes in the current tour
-    for (int i = 0; i < (int)solution.size(); ++i)
+    for (int i = 0; i < sol_size; ++i)
     {   
         if (i == 0)
         {
             continue;
         }
-        tourLength += graph->getEdgeWeight(solution[i-1], solution[i]);
+        tourLength += graph->EdgeWeight[solution[i-1]][solution[i]];
     }
     // add path from last to first node also considering the last node determined by all the others, which is not specifically selected
-    tourLength += graph->getEdgeWeight(solution[solution.size()-1], solution[0]);
-    return tourLength / orig_node_num;
+    tourLength += graph->EdgeWeight[solution[sol_size-1]][solution[0]];
+    return tourLength;
 }
 
 int Utils::getMxWccSz(std::shared_ptr<Graph> graph)

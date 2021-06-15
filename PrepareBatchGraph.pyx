@@ -38,9 +38,9 @@ cdef class py_sparseMatrix:
 cdef class py_PrepareBatchGraph:
     cdef shared_ptr[PrepareBatchGraph] inner_PrepareBatchGraph
     cdef sparseMatrix matrix
-    def __cinit__(self, aggregatorID, node_init_dim, edge_init_dim, ignore_covered_edges, include_selected_nodes):
+    def __cinit__(self, aggregatorID, node_init_dim, edge_init_dim, ignore_covered_edges, include_selected_nodes, embeddingMethod):
         self.inner_PrepareBatchGraph = shared_ptr[PrepareBatchGraph](new PrepareBatchGraph(aggregatorID, node_init_dim, edge_init_dim, ignore_covered_edges, 
-                                                                                           include_selected_nodes))
+                                                                                           include_selected_nodes, embeddingMethod))
     # def __dealloc__(self):
     #     if self.inner_PrepareBatchGraph != NULL:
     #         self.inner_PrepareBatchGraph.reset()
@@ -57,6 +57,7 @@ cdef class py_PrepareBatchGraph:
             deref(inner_Graph).adj_list = _g.adj_list
             deref(inner_Graph).edge_weights = _g.edge_weights
             deref(inner_Graph).node_feats = _g.node_feats
+            deref(inner_Graph).EdgeWeight = _g.EdgeWeight
             inner_glist.push_back(inner_Graph)
 
         cdef int *refint = <int*>malloc(len(actions)*sizeof(int))
@@ -78,6 +79,7 @@ cdef class py_PrepareBatchGraph:
             deref(inner_Graph).adj_list = _g.adj_list
             deref(inner_Graph).edge_weights = _g.edge_weights
             deref(inner_Graph).node_feats = _g.node_feats
+            deref(inner_Graph).EdgeWeight = _g.EdgeWeight
             inner_glist.push_back(inner_Graph)
         deref(self.inner_PrepareBatchGraph).SetupPredAll(idxes,inner_glist,covered)
 
@@ -104,6 +106,18 @@ cdef class py_PrepareBatchGraph:
     @property
     def e2nsum_param(self):
         matrix = deref(deref(self.inner_PrepareBatchGraph).e2nsum_param)
+        return self.ConvertSparseToTensor(matrix)
+    @property
+    def n2esum_param(self):
+        matrix = deref(deref(self.inner_PrepareBatchGraph).n2esum_param)
+        return self.ConvertSparseToTensor(matrix)
+    @property
+    def start_param(self):
+        matrix = deref(deref(self.inner_PrepareBatchGraph).start_param)
+        return self.ConvertSparseToTensor(matrix)
+    @property
+    def end_param(self):
+        matrix = deref(deref(self.inner_PrepareBatchGraph).end_param)
         return self.ConvertSparseToTensor(matrix)
     @property
     def idx_map_list(self):

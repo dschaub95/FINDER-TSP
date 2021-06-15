@@ -35,7 +35,7 @@ cdef class py_Data:
     def term_t(self):
         return deref(self.inner_Data).term_t
 
-    cdef G2P(self,Graph graph1):
+    cdef G2P(self, Graph graph1):
         num_nodes = graph1.num_nodes     #得到Graph对象的节点个数
         num_edges = graph1.num_edges    #得到Graph对象的连边个数
         edge_list = graph1.edge_list
@@ -97,19 +97,19 @@ cdef class py_SumTree:
             Data.inner_Data = dataPtr
             result.append(Data)
         return  result
-    def Add(self,p,pyData):
+    def Add(self, p, pyData):
         g = pyData.graph
         self.inner_Data =shared_ptr[Data](new Data())
         self.inner_Graph =shared_ptr[Graph](new Graph())
-        deref(self.inner_Graph).num_nodes= g.num_nodes
-        deref(self.inner_Graph).num_edges=g.num_edges
-        deref(self.inner_Graph).edge_list=g.edge_list
-        deref(self.inner_Graph).adj_list=g.adj_list
+        deref(self.inner_Graph).num_nodes = g.num_nodes
+        deref(self.inner_Graph).num_edges = g.num_edges
+        deref(self.inner_Graph).edge_list = g.edge_list
+        deref(self.inner_Graph).adj_list = g.adj_list
         deref(self.inner_Data).g=self.inner_Graph
-        deref(self.inner_Data).s_t= pyData.s_t
-        deref(self.inner_Data).a_t= pyData.a_t
-        deref(self.inner_Data).r_t= pyData.r_t
-        deref(self.inner_Data).s_prime= pyData.s_prime
+        deref(self.inner_Data).s_t = pyData.s_t
+        deref(self.inner_Data).a_t = pyData.a_t
+        deref(self.inner_Data).r_t = pyData.r_t
+        deref(self.inner_Data).s_prime = pyData.s_prime
         deref(self.inner_Data).term_t= pyData.term_t
         deref(self.inner_SumTree).Add(p,self.inner_Data)
 

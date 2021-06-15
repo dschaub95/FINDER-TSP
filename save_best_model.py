@@ -6,16 +6,10 @@ import os
 from shutil import copy
 import datetime
 
-def main():
-    print("Starting FINDER...")
-    dqn = FINDER()
-    
+
+def save_best_model(dqn, config_path):
     print("Searching for best model...")
-    try:
-        vcfile_path = str(sys.argv[1])
-    except:
-        print("no vcfile path specified, using default path...")
-        vcfile_path = None
+    vcfile_path = None
     best_model, vcfile_path, min_tour_length = dqn.findModel(VCFile_path=vcfile_path)
     min_tour_length = ''.join(min_tour_length.split('.'))
     
@@ -49,6 +43,9 @@ def main():
     vcfile_name = '.'.join(vcfile_name)
     copy(vcfile_path, target + vcfile_name)
 
+    print("Saving config file...")
+    copy(config_path, target + config_path.split('/')[-1].split('_')[-1])
+
     print("Saving hyperparameters and architecture...")
     code_file = open('FINDER.pyx', 'r')
     code_lines = code_file.readlines()
@@ -73,6 +70,13 @@ def main():
     file_paths = ['FINDER.pyx', 'PrepareBatchGraph.pyx', 'PrepareBatchGraph.pxd', 'src/lib/PrepareBatchGraph.cpp', 'src/lib/PrepareBatchGraph.h']
     for file_path in file_paths:
         copy(file_path, target + file_path.split('/')[-1])
+    
+def main():
+    print("Starting FINDER...")
+    config_path = 'train_configs/default_config.txt'
+    dqn = FINDER(config_path=config_path)
+    save_best_model(dqn, config_path=config_path)
+
 
 if __name__=="__main__":
     main()

@@ -11,6 +11,7 @@ Graph::Graph() : num_nodes(0), num_edges(0)
     edge_list.clear();
     adj_list.clear();
     edge_weights.clear();
+    EdgeWeight.clear();
     node_feats.clear();
 }
 
@@ -19,6 +20,7 @@ Graph::~Graph()
     edge_list.clear();
     adj_list.clear();
     edge_weights.clear();
+    EdgeWeight.clear();
     node_feats.clear();
     num_nodes = 0;
     num_edges = 0;
@@ -30,7 +32,7 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
     edge_list.resize(num_edges);
     adj_list.resize(num_nodes);
     edge_weights.resize(num_edges);
-   
+    EdgeWeight.resize(num_nodes, std::vector<double>(num_nodes, 0.0));
     // get number of node features per node
     
     node_feats.resize(num_nodes);
@@ -57,35 +59,41 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
         adj_list[y].push_back(x);
         edge_list[i] = std::make_pair(edges_from[i], edges_to[i]);
         edge_weights.push_back(_edge_weights[i]);
+        EdgeWeight[x][y] = _edge_weights[i];
+        EdgeWeight[y][x] = _edge_weights[i];
     }
     // printf("node_feats: %f, %f \n", node_feats[0][0], node_feats[0][1]);
     // printf("Sucessfully added %d elements to edge weights list for a graph of size %d\n", (int)edge_weights.size(), num_nodes);
-    //printf("edge_weight: %f\n", edge_weights[0]);
+    // printf("edge_weight: %f\n", edge_weights[0]);
 }
 
-double Graph::getEdgeWeight(int start_node, int end_node)
-// order of the nodes in undirected complete case irelevant
-{
-    int high_node, low_node;
-    // check which node has higher index to determine the corresponding edge weight
-    if (start_node > end_node)
-    {
-        high_node = start_node;
-        low_node = end_node;
-    }
-    else
-    {
-        high_node = end_node;
-        low_node = start_node;
-    }
-    // calculate index..
-    int start_idx = low_node*(num_nodes) - (int)(low_node*(low_node + 1)/2);
-    // printf("Edge (%d, %d) \n", start_node, end_node);
-    // printf("Number of nodes: %d\n", num_nodes);
-    // printf("Result edge weight index: %d\n", start_idx + high_node - low_node - 1);
-    // printf("Result edge weight: %f\n", edge_weights[start_idx + high_node - low_node - 1]);
-    return edge_weights[start_idx + high_node - low_node - 1];
-}
+// double Graph::getEdgeWeight(int start_node, int end_node)
+// // order of the nodes in undirected complete case irelevant
+// {
+//     int high_node, low_node;
+//     if (start_node == end_node)
+//     {
+//         return 0.0;
+//     }
+//     // check which node has higher index to determine the corresponding edge weight
+//     if (start_node > end_node)
+//     {
+//         high_node = start_node;
+//         low_node = end_node;
+//     }
+//     else
+//     {
+//         high_node = end_node;
+//         low_node = start_node;
+//     }
+//     // calculate index..
+//     int start_idx = low_node*(num_nodes) - (int)(low_node*(low_node + 1)/2);
+//     // printf("Edge (%d, %d) \n", start_node, end_node);
+//     // printf("Number of nodes: %d\n", num_nodes);
+//     // printf("Result edge weight index: %d\n", start_idx + high_node - low_node - 1);
+//     // printf("Result edge weight: %f\n", edge_weights[start_idx + high_node - low_node - 1]);
+//     return edge_weights[start_idx + high_node - low_node - 1];
+// }
 
 
 GSet::GSet()

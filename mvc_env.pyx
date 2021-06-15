@@ -27,6 +27,7 @@ cdef class py_MvcEnv:
         deref(self.inner_Graph).adj_list = _g.adj_list
         deref(self.inner_Graph).edge_weights = _g.edge_weights
         deref(self.inner_Graph).node_feats = _g.node_feats
+        deref(self.inner_Graph).EdgeWeight = _g.EdgeWeight
         deref(self.inner_MvcEnv).s0(self.inner_Graph, _help_func)
 
     def step(self, int a):
