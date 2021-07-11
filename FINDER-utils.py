@@ -1,41 +1,17 @@
-# -*- coding: utf-8 -*-
-
-from FINDER import FINDER
-import sys
-import numpy as np
 import os
 from shutil import copy
 import datetime
-
-def findModel(dqn, VCFile_path):
-    if VCFile_path:
-        VCFile = VCFile_path
-    else:
-        VCFile = './models/%s/ModelVC_%d_%d.csv'%(dqn.cfg['g_type'], dqn.cfg['NUM_MIN'], dqn.cfg['NUM_MAX'])
-    vc_list = []
-    for line in open(VCFile):
-        try:
-            vc_list.append(float(line))
-        except:
-            continue
-    min_arg_vc = np.argmin(vc_list)
-    min_vc = str(np.round(np.min(vc_list), 6))
-    best_model_iter = dqn.cfg['save_interval'] * min_arg_vc
-
-    best_model = './models/%s/nrange_%d_%d_iter_%d.ckpt' % (dqn.cfg['g_type'], dqn.cfg['NUM_MIN'], dqn.cfg['NUM_MAX'], best_model_iter)
-    print(best_model)
-    return best_model, VCFile, min_vc
 
 
 def save_best_model(dqn, config_path):
     print("Searching for best model...")
     vcfile_path = None
-    best_model, vcfile_path, min_tour_length = findModel(dqn, VCFile_path=vcfile_path)
+    best_model, vcfile_path, min_tour_length = dqn.findModel(VCFile_path=vcfile_path)
     min_tour_length = ''.join(min_tour_length.split('.'))
     
     print("Saving best model...")
     base_file_name = best_model.split('/')[-1]
-    g_type = dqn.cfg['g_type']
+    g_type = best_model.split('/')[-2]
     # base path to the model files and the vcmodel file
     base_path = '/'.join(vcfile_path.split('/')[0:-1]) + '/'
 
@@ -44,7 +20,6 @@ def save_best_model(dqn, config_path):
     for f in files:
         if base_file_name in f:
             best_model_files.append(f)
-    print(base_file_name)
     node_range = '_'.join(base_file_name.split('_')[0:3])
     target = './best_models/{}/{}/'.format(g_type, node_range + '_len_' + min_tour_length)
     try:
@@ -91,16 +66,3 @@ def save_best_model(dqn, config_path):
     file_paths = ['FINDER.pyx', 'PrepareBatchGraph.pyx', 'PrepareBatchGraph.pxd', 'src/lib/PrepareBatchGraph.cpp', 'src/lib/PrepareBatchGraph.h']
     for file_path in file_paths:
         copy(file_path, target + file_path.split('/')[-1])
-    
-def main():
-    print("Starting FINDER...")
-    config_path = 'train_configs/default_config.txt'
-    dqn = FINDER(config_path=config_path)
-    save_best_model(dqn, config_path=config_path)
-
-
-if __name__=="__main__":
-    main()
-
-
-    

@@ -9,8 +9,8 @@ from libc.stdlib cimport free
 cdef class py_MvcEnv:
     cdef shared_ptr[MvcEnv] inner_MvcEnv
     cdef shared_ptr[Graph] inner_Graph
-    def __cinit__(self, double _norm):
-        self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(_norm))
+    def __cinit__(self, double _norm, int _help_func, int _sign):
+        self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(_norm, _help_func, _sign))
         self.inner_Graph =shared_ptr[Graph](new Graph())
     # def __dealloc__(self):
     #     if self.inner_MvcEnv != NULL:
@@ -60,6 +60,14 @@ cdef class py_MvcEnv:
     @property
     def norm(self):
         return deref(self.inner_MvcEnv).norm
+    
+    @property
+    def help_func(self):
+        return deref(self.inner_MvcEnv).help_func
+
+    @property
+    def sign(self):
+        return deref(self.inner_MvcEnv).sign
 
     @property
     def graph(self):

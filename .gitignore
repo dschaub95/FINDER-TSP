@@ -1,15 +1,23 @@
-*.cpp
-!src/*/*.cpp
-models
-best_models
-*.c
-# Docker stuff
-data/*
-!data/
+models/**
+
+best_models/**
+!best_models/.gitkeep
+plots/*
+!plots/.gitkeep
 test_sets
 valid_sets
-.vscode/
+data/*
+!data/.gitkeep
+graphs/**
+!graphs/.gitkeep
 
+.ipynb_checkpoints/**
+
+*.cpp
+!src/*/*.cpp
+*.c
+# Docker stuff
+.vscode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

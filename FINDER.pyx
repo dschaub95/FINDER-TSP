@@ -97,7 +97,7 @@ class FINDER:
 
         # training set specifications
         self.cfg['g_type'] = 'tsp_2d'
-        self.cfg['NUM_MIN'] = 10
+        self.cfg['NUM_MIN'] = 15
         self.cfg['NUM_MAX'] = 20
         self.cfg['n_generator'] = 1000
 
@@ -115,9 +115,10 @@ class FINDER:
         self.cfg['eps_step'] = 10000.0
         self.cfg['MEMORY_SIZE'] = 150000
         self.cfg['reward_normalization'] = 'max'
+        self.cfg['reward_sign'] = -1
 
         # validation set info
-        self.cfg['valid_path'] = 'valid_sets/synthetic_nrange_10_20_200/'
+        self.cfg['valid_path'] = 'valid_sets/synthetic_nrange_15_20_200/'
         self.cfg['valid_scale_fac'] = 0.0001
         self.cfg['n_valid'] = 200
 
@@ -162,17 +163,23 @@ class FINDER:
         else:
             self.nStepReplayMem = nstep_replay_mem.py_NStepReplayMem(MEMORY_SIZE)
 
+        cdef int norm
+        if self.cfg['reward_normalization'] == 'max':
+            norm = NUM_MAX
+        elif self.cfg['reward_normalization'] == 'min':
+            norm = NUM_MIN
+        else:
+            norm = -1
+        
+        cdef int help_func = self.cfg['help_func']
+        cdef int reward_sign = self.cfg['reward_sign']
+        
         for i in range(num_env):
-            if self.cfg['reward_normalization'] == 'max':
-                self.env_list.append(mvc_env.py_MvcEnv(NUM_MAX))
-            elif self.cfg['reward_normalization'] == 'min':
-                self.env_list.append(mvc_env.py_MvcEnv(NUM_MIN))
-            else:
-                self.env_list.append(mvc_env.py_MvcEnv(-1))
+            self.env_list.append(mvc_env.py_MvcEnv(norm, help_func, reward_sign))
             self.g_list.append(graph.py_Graph())
         
         # for the test env the norm is not used since no reward is calculated
-        self.test_env = mvc_env.py_MvcEnv(NUM_MAX)
+        self.test_env = mvc_env.py_MvcEnv(NUM_MAX, help_func, reward_sign)
         # [batch_size, node_cnt]
         self.action_select = tf.sparse_placeholder(tf.float32, name="action_select")
         # [node_cnt, batch_size]
@@ -241,6 +248,8 @@ class FINDER:
 
         # self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
         self.session.run(tf.global_variables_initializer())
+
+        self.writer = tf.summary.FileWriter('./graphs', graph=self.session.graph)
 
 ################################################# New code for FINDER #################################################
 ###################################################### BuildNet start ######################################################    
@@ -697,7 +706,7 @@ class FINDER:
             print("Epsilon:", eps)
             if iter % 10 == 0:
                 self.PlayGame(10, eps)
-            if iter % 300 == 0:
+            if iter % self.cfg['save_interval'] == 0:
                 if(iter == 0):
                     N_start = start
                 else:
@@ -729,7 +738,9 @@ class FINDER:
             # print("Fitting in 5 seconds...")
             # time.sleep(5)
             self.Fit()
+            self.writer.flush()
         f_out.close()
+        self.writer.close()
 
 
     def Test(self, int gid):
@@ -1221,7 +1232,8 @@ class FINDER:
                 print('\nBad validation directory!')
             
             for fname in fnames:
-                if not 'tsp' in fname:
+                if not '.tsp' in fname:
+                    print(fname)
                     continue
                 try:
                     problem = tsplib95.load(self.cfg['valid_path'] + fname)
@@ -1236,6 +1248,7 @@ class FINDER:
                     self.InsertGraph(g, is_test=True)
                     counter += 1
                 except:
+                    print(fname)
                     continue
             print("\nSucessfully loaded {} validation graphs!".format(counter))
         else:

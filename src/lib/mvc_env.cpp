@@ -8,13 +8,12 @@
 #include <stack>
 #include <cstdio>
 
-int sign = -1;
-
-MvcEnv::MvcEnv(double _norm)
+MvcEnv::MvcEnv(double _norm, int _help_func, int _sign)
 {
     norm = _norm;
     graph = nullptr;
-    help_func = 0;
+    sign = _sign;
+    help_func = _help_func;
     numCoveredEdges = 0;
     state_seq.clear();
     act_seq.clear();
@@ -29,6 +28,7 @@ MvcEnv::~MvcEnv()
 {
     norm = 0;
     help_func = 0;
+    sign = 0;
     graph = nullptr;
     numCoveredEdges = 0;
     state_seq.clear();
@@ -43,10 +43,9 @@ MvcEnv::~MvcEnv()
 void MvcEnv::s0(std::shared_ptr<Graph> _g, int _help_func)
 {
     graph = _g;
-    help_func = _help_func;
-    // make norm depend on specific graph
-    // if ((int)norm == -1) { norm = _g->num_nodes; }
-    norm = _g->num_nodes;
+    // help_func = _help_func;
+    // make norm depend on specific graph if selected
+    if ((int)norm == -1) { norm = _g->num_nodes; }
     covered_set.clear();
     action_list.clear();
     action_list.push_back(0);

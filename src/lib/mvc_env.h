@@ -10,7 +10,7 @@
 class MvcEnv
 {
 public:
-    MvcEnv(double _norm);
+    MvcEnv(double _norm, int _help_func, int _sign);
 
     ~MvcEnv();
 
@@ -39,6 +39,8 @@ public:
     int help_func;
 
     double norm;
+
+    int sign;
 
     std::shared_ptr<Graph> graph;
 

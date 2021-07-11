@@ -7,7 +7,7 @@ from graph cimport Graph
 
 cdef extern from "./src/lib/mvc_env.h":
     cdef cppclass MvcEnv:
-        MvcEnv(double _norm)
+        MvcEnv(double _norm, int _help_func, int _sign)
         void s0(shared_ptr[Graph] _g, int _help_func)except+
         double step(int a)except+
         void stepWithoutReward(int a)except+
@@ -18,6 +18,8 @@ cdef extern from "./src/lib/mvc_env.h":
         double getLastTourDifference()except+
         double getTourDifference(int new_node)except+
         double norm
+        int sign
+        int help_func
         shared_ptr[Graph] graph
         vector[vector[int]]  state_seq
         vector[int] act_seq

@@ -103,8 +103,10 @@ cdef class py_NStepReplayMem:
         deref(self.inner_Graph).node_feats = g.node_feats
         deref(self.inner_Graph).EdgeWeight = g.EdgeWeight
         
-        self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(mvcenv.norm))
+        self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(mvcenv.norm, mvcenv.help_func, mvcenv.sign))
         deref(self.inner_MvcEnv).norm = mvcenv.norm
+        deref(self.inner_MvcEnv).help_func = mvcenv.help_func
+        deref(self.inner_MvcEnv).sign = mvcenv.sign
         deref(self.inner_MvcEnv).graph = self.inner_Graph
         deref(self.inner_MvcEnv).state_seq = mvcenv.state_seq
         deref(self.inner_MvcEnv).act_seq = mvcenv.act_seq
