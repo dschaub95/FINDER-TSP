@@ -30,6 +30,7 @@ RUN pip install -U --no-cache-dir \
     tsplib95 \
     jupyter \
     notebook 
+RUN conda install pip -y
 
 RUN conda update -y -n base conda
 
@@ -46,7 +47,8 @@ RUN pip install -U --no-cache-dir \
     pandas==0.25.2 \
     scipy==1.3.1 \
     tensorflow-gpu==1.14.0 \
-    tqdm==4.36.1
+    tqdm==4.36.1 \
+    tsplib95
 
 
 # ENV CUDA_HOME=/usr/local/cuda-10.0
