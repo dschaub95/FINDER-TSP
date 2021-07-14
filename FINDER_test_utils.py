@@ -86,13 +86,14 @@ def run_test(dqn, graph_list):
         sol_times.append(time)
     return lengths, solutions, sol_times
 
-def get_mean_approx_to_opt(data_dir, fnames, test_lengths):
+def get_approx_ratios(data_dir, fnames, test_lengths):
     true_lengths = []
     len_dict = get_len_dict(data_dir)
     for fname in fnames:
         true_lengths.append(len_dict[fname])
+    approx_ratios = [length[0]/length[1] for length in zip(test_lengths, true_lengths)]
     mean_approx_ratio = np.mean([length[0]/length[1] for length in zip(test_lengths, true_lengths)])
-    return mean_approx_ratio
+    return approx_ratios, mean_approx_ratio
 
 def get_len_dict(folder):
     # get lengths
@@ -111,7 +112,7 @@ def save_solutions(data_dir, fnames, solutions, best_model_file):
         if not '.tsp' in fname or '.sol' in fname:
             continue
         tmp_df = pd.DataFrame()
-        tmp_df[fname.split('.')[0]] = solutions[idx]
+        tmp_df[fname] = solutions[idx]
         sol_df = pd.concat([sol_df,tmp_df.astype(int)], ignore_index=False, axis=1)
         idx += 1
     best_model = best_model_file.split('.')[0]
@@ -130,7 +131,7 @@ def save_lengths(data_dir, fnames, lengths, best_model_file):
         if not '.tsp' in fname or '.sol' in fname:
             continue
         tmp_df = pd.DataFrame()
-        tmp_df[fname.split('.')[0]] = [lengths[idx]]
+        tmp_df[fname] = [lengths[idx]]
         lens_df = pd.concat([lens_df,tmp_df], ignore_index=False, axis=1)
         idx += 1
     best_model = best_model_file.split('.')[0]
@@ -140,6 +141,25 @@ def save_lengths(data_dir, fnames, lengths, best_model_file):
     except:
         pass
     lens_df.to_csv('results/{}/tour_lengths_{}.csv'.format(result_folder, best_model))
+
+def save_approx_ratios(data_dir, fnames, approx_ratios, best_model_file):
+    lens_df = pd.DataFrame()
+    idx = 0
+    print("Saving solution lengths...")
+    for fname in tqdm(fnames):
+        if not '.tsp' in fname or '.sol' in fname:
+            continue
+        tmp_df = pd.DataFrame()
+        tmp_df[fname] = [approx_ratios[idx]]
+        lens_df = pd.concat([lens_df,tmp_df], ignore_index=False, axis=1)
+        idx += 1
+    best_model = best_model_file.split('.')[0]
+    result_folder = data_dir.split("/")[-2]
+    try:
+        os.mkdir(f'results/{result_folder}')
+    except:
+        pass
+    lens_df.to_csv('results/{}/approx_ratios_{}.csv'.format(result_folder, best_model))
 
 def prepare_testset_S2VDQN(folder, scale_factor=0.000001):
     if folder[-1] == '/':
@@ -175,3 +195,28 @@ def prepare_testset_S2VDQN(folder, scale_factor=0.000001):
             fnames.append(fname)
     # print("Number of loaded test graphs:",len(graph_list))
     return graph_list, fnames
+
+def get_data_from_result_files(data_dir, result_dir):
+    for f in os.listdir(result_dir):
+        if 'solution' in f:
+            sol_df = pd.read_csv(result_dir + f, index_col=0)
+        elif 'tour' in f:
+            len_df = pd.read_csv(result_dir + f, index_col=0)
+        elif 'approx' in f:
+            approx_df = pd.read_csv(result_dir + f, index_col=0)
+    try:
+        approx_ratios = list(approx_df.iloc[0])
+        fnames = [fname+'.tsp' for fname in len_df.columns if not '.tsp' in fname]
+        test_lengths = list(len_df.iloc[0])
+        
+    except:
+        print("Generating approx ratios")
+        fnames = [fname+'.tsp' for fname in len_df.columns if not '.tsp' in fname]
+        test_lengths = list(len_df.iloc[0])
+        approx_ratios, mean_approx_ratio = get_approx_ratios(data_dir, fnames=fnames, test_lengths=test_lengths)
+    solutions = []
+    for column in sol_df.columns:
+            raw_list = list(sol_df[column])
+            processed_list = [int(k) for k in raw_list if not np.isnan(k)]
+            solutions.append(processed_list)
+    return fnames, approx_ratios, test_lengths, solutions
