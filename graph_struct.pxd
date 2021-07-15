@@ -1,6 +1,7 @@
 from libcpp.vector cimport vector
 from libcpp.map cimport map
 from libcpp.pair cimport pair
+
 cdef extern from "./src/lib/graph_struct.h":
     cdef cppclass LinkedTable[T]:
         LinkedTable()except+

@@ -7,10 +7,7 @@ cdef class py_GraphStruct:
     cdef shared_ptr[GraphStruct] inner_GraphStruct
     def __cinit__(self):
         self.inner_GraphStruct = shared_ptr[GraphStruct](new GraphStruct())
-    # def __dealloc__(self):
-    #     if self.inner_GraphStruct != NULL:
-    #         self.inner_GraphStruct.reset()
-    #         gc.collect()
+        
     def AddEdge(self,int idx, int x, int y, double weight):
         deref(self.inner_GraphStruct).AddEdge(idx, x, y, weight)
 
@@ -42,8 +39,3 @@ cdef class py_GraphStruct:
     @property
     def in_edges(self):
         return deref(deref(self.inner_GraphStruct).in_edges).head
-        #     cint_edges_from = np.zeros([num_edges],dtype=np.int)
-        # cint_edges_to = np.zeros([num_edges],dtype=np.int)
-        # for i in range(num_edges):
-        #     cint_edges_from[i]=edge_list[i].first
-        #     cint_edges_to[i] =edge_list[i].second
