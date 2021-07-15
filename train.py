@@ -7,7 +7,7 @@ from FINDER_train_utils import *
 
 def main():
     print("Starting FINDER...")
-    config_path = 'train_configs/default_config.txt'
+    config_path = 'train_configs/train_config.txt'
     copy(config_path, 'models/tsp_2d/current_config.txt')
     dqn = FINDER(config_path=config_path)
     dqn.Train()

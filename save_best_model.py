@@ -6,7 +6,7 @@ from FINDER_train_utils import *
 
 if __name__=="__main__":
     print("Starting FINDER...")
-    config_path = 'train_configs/default_config.txt'
+    config_path = 'train_configs/train_config.txt'
     dqn = FINDER(config_path=config_path)
     save_best_model(dqn, config_path=config_path)
 
