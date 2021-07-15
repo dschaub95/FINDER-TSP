@@ -8,9 +8,5 @@ from graph cimport Graph
 cdef extern from "./src/lib/utils.h":
     cdef cppclass Utils:
         Utils()
-        double getRobustness(shared_ptr[Graph] graph,vector[int] solution)except+
         double getTourLength(shared_ptr[Graph] graph,vector[int] solution)except+
-        vector[int] reInsert(shared_ptr[Graph] graph,vector[int] solution,vector[int] allVex,int decreaseStrategyID,int reinsertEachStep)except+
-        int getMxWccSz(shared_ptr[Graph] graph)
-        vector[double] MaxWccSzList
 

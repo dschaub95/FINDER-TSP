@@ -1507,30 +1507,3 @@ class FINDER:
             loss += result[2]*bsize
         return loss / len(g_list)
     
-    def EvaluateSol(self, data_test, sol_file, strategyID, reInsertStep):
-        sys.stdout.flush()
-        g = nx.read_edgelist(data_test)
-        g_inner = self.GenNetwork(g)
-        print ('number of nodes:%d'%nx.number_of_nodes(g))
-        print ('number of edges:%d'%nx.number_of_edges(g))
-        nodes = list(range(nx.number_of_nodes(g)))
-        sol = []
-        for line in open(sol_file):
-            sol.append(int(line))
-        print ('number of sol nodes:%d'%len(sol))
-        sol_left = list(set(nodes)^set(sol))
-        if strategyID > 0:
-            start = time.time()
-            if reInsertStep > 0 and reInsertStep < 1:
-                step = np.max([int(reInsertStep*nx.number_of_nodes(g)),1]) #step size
-            else:
-                step = reInsertStep
-            sol_reinsert = self.utils.reInsert(g_inner, sol, sol_left, strategyID, step)
-            end = time.time()
-            print ('reInsert time:%.6f'%(end-start))
-        else:
-            sol_reinsert = sol
-        solution = sol_reinsert + sol_left
-        print ('number of solution nodes:%d'%len(solution))
-        Tourlength = self.utils.getTourLength(g_inner, solution)
-        return Tourlength
