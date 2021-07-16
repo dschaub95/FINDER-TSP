@@ -6,8 +6,6 @@
 #include <memory>
 #include "graph.h"
 #include "disjoint_set.h"
-#include "graph_utils.h"
-#include "decrease_strategy.cpp"
 
 class Utils
 {
