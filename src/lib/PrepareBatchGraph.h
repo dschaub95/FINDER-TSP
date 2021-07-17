@@ -37,7 +37,7 @@ public:
     void SetupPredAll(std::vector<int> idxes,
                          std::vector< std::shared_ptr<Graph> > g_list,
                          std::vector< std::vector<int> > covered);
-    std::vector<int> GetStatusInfo(std::shared_ptr<Graph> g, int num, const int* covered, int& counter,int& twohop_number,int& threehop_number, std::vector<int>& idx_map);
+    std::vector<int> GetStatusInfo(std::shared_ptr<Graph> g, int num, const int* covered, int& counter, std::vector<int>& idx_map);
     std::shared_ptr<sparseMatrix> act_select;
     std::shared_ptr<sparseMatrix> rep_global;
     std::shared_ptr<sparseMatrix> n2nsum_param;

@@ -60,7 +60,7 @@ PrepareBatchGraph::~PrepareBatchGraph()
     avail_act_cnt.clear();
 }
 
-std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int num, const int* covered, int& counter, int& twohop_number, int& threehop_number, std::vector<int>& idx_map)
+std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int num, const int* covered, int& counter, std::vector<int>& idx_map)
 // calculates number of available actions
 {
     std::set<int> c;
@@ -100,18 +100,14 @@ std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int 
         case 2:
         {
             // keep all nodes and just change node features + edge features later depending on whether node was already chosen
+            // also possibly delete links between selected nodes
             break;
         }
         default:
             break;
     }    
     counter = 0;
-    twohop_number = 0;
-    threehop_number = 0;
-    std::set<int> node_twohop_set;
-
     int n = 0;
- 	std::map< int, int > node_twohop_counter;
     // iterate over all edges
     for (auto& p : g->edge_list)
     {
@@ -134,26 +130,6 @@ std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int 
                 
             idx_map[p.first] = 0;
             idx_map[p.second] = 0;
-
-            if (node_twohop_counter.find(p.first) != node_twohop_counter.end())
-            {
-                twohop_number += node_twohop_counter[p.first];
-                node_twohop_counter[p.first] = node_twohop_counter[p.first] + 1;
-            }
-            else
-            {
-                node_twohop_counter.insert(std::make_pair(p.first,1));
-            }
-
-            if (node_twohop_counter.find(p.second) != node_twohop_counter.end())
-            {
-                twohop_number += node_twohop_counter[p.second];
-                node_twohop_counter[p.second] = node_twohop_counter[p.second] + 1;
-            }
-            else
-            {
-                node_twohop_counter.insert(std::make_pair(p.second,1));
-            }
         }
     }
     resultList[0] = n;
@@ -179,33 +155,23 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
     int edge_cnt = 0;
     for (int i = 0; i < (int)idxes.size(); ++i)
     {   
+        // possibility to include more handcrafted features
         std::vector<double> temp_feat;
+        temp_feat.push_back(1.0);
+        aux_feat.push_back(temp_feat);
 
         auto g = g_list[idxes[i]];
 
         int counter;
-        int twohop_number;
-        int threehop_number;
         int excluded_nodes;
         // save ratio of covered nodes compared to all nodes
-        if (g->num_nodes)
-        {
-            temp_feat.push_back((double)covered[idxes[i]].size() / (double)g->num_nodes);
-        }
         // calc counter, twohop_number and threehop_number + avail
-        auto resultStatus = GetStatusInfo(g, covered[idxes[i]].size(), covered[idxes[i]].data(), counter, twohop_number, threehop_number, idx_map_list[i]);
+        auto resultStatus = GetStatusInfo(g, covered[idxes[i]].size(), covered[idxes[i]].data(), counter, idx_map_list[i]);
         avail_act_cnt[i] = resultStatus[0];
         excluded_nodes = resultStatus[1];
         // save ratio of edges that are connected to at least one covered node and all edges
-        if (g->edge_list.size())
-        {
-            temp_feat.push_back((double)counter / (double)g->edge_list.size());
-        }
 
-        temp_feat.push_back((double)twohop_number / ((double)g->num_nodes * (double)g->num_nodes));
-
-        temp_feat.push_back(1.0);
-
+        
         node_cnt += avail_act_cnt[i];
         // calculate edge count
         edge_cnt += avail_act_cnt[i] * (avail_act_cnt[i] - 1);
@@ -222,7 +188,7 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
             }
                 
         }
-        aux_feat.push_back(temp_feat);
+        
     }
     // (Batchsize, all available actions in all graphs)
     // prepare in and out edges size, and subgraphs(=remaining parts of the current graph)
@@ -602,7 +568,8 @@ std::shared_ptr<sparseMatrix> e2e_construct(GraphStruct* graph)
     result->colNum = graph->num_edges;
     for (int i = 0; i < (int)graph->num_edges; ++i)
     {
-        int node_from = graph->edge_list[i].first, node_to = graph->edge_list[i].second;
+        int node_from = graph->edge_list[i].first;
+        int node_to = graph->edge_list[i].second;
         auto& list = graph->in_edges->head[node_from];
         for (int j = 0; j < (int)list.size(); ++j)
         {
