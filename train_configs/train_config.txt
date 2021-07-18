@@ -1,6 +1,6 @@
 # GNN hyperparameters
 help_func = True # whether to use helper function during node insertion process, which inserts node into best position in current partial tour, default value false
-net_type = 'S2V-DQN' # specifies which net to use, S2VDQN needs embeddingmethod 3
+net_type = 'S2VDQN' # specifies which net to use, S2VDQN needs embeddingmethod 3
 max_bp_iter = 3 # number of aggregation steps in GNN, equals number of layers, default value 3
 aggregatorID = 0 # 0:sum; 1:mean; 2:GCN; 3:edge weight based sum, default value 0
 node_init_dim = 6 # number of initial node features, default value 6
@@ -8,7 +8,7 @@ edge_init_dim = 4 # number of initial edge features, default value 4
 state_init_dim = 1 # number of initial state features, default value 1
 node_embed_dim = 64 # dimension p for each vector embedding of the nodes in the graph, default value 64
 edge_embed_dim = 64 # dimension q for each vector embedding of the edges in the graph, default value 64
-embeddingMethod = 3 # 0:no inclusion of edge weights, 1:inclusion of sum of edge weights per node, 2:S2V-DQN edge weight inclusion 3:Changjun edge embeding, default value 2
+embeddingMethod = 2 # 0:no inclusion of edge weights, 1:inclusion of sum of edge weights per node, 2:S2V-DQN edge weight inclusion 3:Changjun edge embeding, default value 2
 ignore_covered_edges = True # whether to ignore edges of which both adjacent nodes have already been selected, default value false
 selected_nodes_inclusion = 2 # 0:no inclusion of selected nodes, 1:start and last selected node inclusion, 2:all selected nodes included, default value 2
 
