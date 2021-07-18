@@ -145,7 +145,7 @@ def save_lengths(data_dir, fnames, lengths, best_model_file):
 def save_approx_ratios(data_dir, fnames, approx_ratios, best_model_file):
     lens_df = pd.DataFrame()
     idx = 0
-    print("Saving solution lengths...")
+    print("Saving approximation ratios...")
     for fname in tqdm(fnames):
         if not '.tsp' in fname or '.sol' in fname:
             continue
@@ -220,3 +220,20 @@ def get_data_from_result_files(data_dir, result_dir):
             processed_list = [int(k) for k in raw_list if not np.isnan(k)]
             solutions.append(processed_list)
     return fnames, approx_ratios, test_lengths, solutions
+
+def get_model_file(model_path):
+
+    for f in os.listdir(model_path):
+        if ('ckpt' not in f):# or (nrange_str not in f):
+            continue
+        # print(f)
+        f_len = f.split('_')[-1].split('.')[0]
+        tour_length = float(f_len)/(10**(len(f_len)-1))
+        if f_len[0] != '1':
+            continue
+            # norm_tour_length = tour_length/float(config['valid_sol'])
+        else:
+            model_file = '.'.join(f.split('.')[0:-1])
+            model_base_path = model_path
+    print("Best model file:", model_file)
+    return model_file, model_base_path, tour_length
