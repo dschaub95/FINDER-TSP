@@ -38,13 +38,26 @@ cdef class py_Data:
     cdef G2P(self, Graph graph1):
         num_nodes = graph1.num_nodes     #得到Graph对象的节点个数
         num_edges = graph1.num_edges    #得到Graph对象的连边个数
+        NN_percent = graph1.NN_percent
         edge_list = graph1.edge_list
+        edge_weights = graph1.edge_weights
+        node_feats = graph1.node_feats
+
         cint_edges_from = np.zeros([num_edges],dtype=np.int)
         cint_edges_to = np.zeros([num_edges],dtype=np.int)
+        cdouble_edge_weights = np.zeros([num_edges], dtype=np.double)
+        cdouble_vec_node_feats = np.zeros([num_nodes, 2], dtype=np.double)
+        # print(num_nodes)
+        cdef int i
         for i in range(num_edges):
-            cint_edges_from[i]=edge_list[i].first
-            cint_edges_to[i] =edge_list[i].second
-        return graph.py_Graph(num_nodes,num_edges,cint_edges_from,cint_edges_to)
+            cint_edges_from[i] = edge_list[i].first
+            cint_edges_to[i] = edge_list[i].second
+            cdouble_edge_weights[i] = edge_weights[i]
+        cdef int j
+        cdef int k
+        for j in range(num_nodes):
+             cdouble_vec_node_feats[j,:] = node_feats[j]
+        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights, cdouble_vec_node_feats, NN_percent)
 
 cdef class py_LeafResult:
     cdef shared_ptr[LeafResult] inner_LeafResult
@@ -161,13 +174,26 @@ cdef class py_ReplaySample:
     cdef G2P(self,Graph graph1):
         num_nodes = graph1.num_nodes     #得到Graph对象的节点个数
         num_edges = graph1.num_edges    #得到Graph对象的连边个数
+        NN_percent = graph1.NN_percent
         edge_list = graph1.edge_list
+        edge_weights = graph1.edge_weights
+        node_feats = graph1.node_feats
+
         cint_edges_from = np.zeros([num_edges],dtype=np.int)
         cint_edges_to = np.zeros([num_edges],dtype=np.int)
+        cdouble_edge_weights = np.zeros([num_edges], dtype=np.double)
+        cdouble_vec_node_feats = np.zeros([num_nodes, 2], dtype=np.double)
+        # print(num_nodes)
+        cdef int i
         for i in range(num_edges):
-            cint_edges_from[i]=edge_list[i].first
-            cint_edges_to[i] =edge_list[i].second
-        return graph.py_Graph(num_nodes,num_edges,cint_edges_from,cint_edges_to)
+            cint_edges_from[i] = edge_list[i].first
+            cint_edges_to[i] = edge_list[i].second
+            cdouble_edge_weights[i] = edge_weights[i]
+        cdef int j
+        cdef int k
+        for j in range(num_nodes):
+             cdouble_vec_node_feats[j,:] = node_feats[j]
+        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights, cdouble_vec_node_feats, NN_percent)
 
 
 
@@ -180,25 +206,7 @@ cdef class py_Memory:
     cdef shared_ptr[MvcEnv] inner_MvcEnv
     def __cinit__(self,double epsilon,double alpha,double beta,double beta_increment_per_sampling,double abs_err_upper,int capacity):
         self.inner_Memory = shared_ptr[Memory](new Memory(epsilon,alpha,beta,beta_increment_per_sampling,abs_err_upper,capacity))
-    # def __dealloc__(self):
-    #     if self.inner_Memory != NULL:
-    #         self.inner_Memory.reset()
-    #         gc.collect()
-    #     if self.inner_SumTree != NULL:
-    #         self.inner_SumTree.reset()
-    #         gc.collect()
-    #     if self.inner_Data != NULL:
-    #         self.inner_Data.reset()
-    #         gc.collect()
-    #     if self.inner_ReplaySample != NULL:
-    #         self.inner_ReplaySample.reset()
-    #         gc.collect()
-    #     if self.inner_Graph != NULL:
-    #         self.inner_Graph.reset()
-    #         gc.collect()
-    #     if self.inner_MvcEnv != NULL:
-    #         self.inner_MvcEnv.reset()
-    #         gc.collect()
+        
     @property
     def tree(self):
         self.inner_SumTree =  deref(self.inner_Memory).tree
@@ -223,12 +231,12 @@ cdef class py_Memory:
 
     def Store(self,transition):
         g = transition.graph
-        self.inner_Data =shared_ptr[Data](new Data())
-        self.inner_Graph =shared_ptr[Graph](new Graph())
-        deref(self.inner_Graph).num_nodes= g.num_nodes
-        deref(self.inner_Graph).num_edges=g.num_edges
-        deref(self.inner_Graph).edge_list=g.edge_list
-        deref(self.inner_Graph).adj_list=g.adj_list
+        self.inner_Data = shared_ptr[Data](new Data())
+        self.inner_Graph = shared_ptr[Graph](new Graph())
+        deref(self.inner_Graph).num_nodes = g.num_nodes
+        deref(self.inner_Graph).num_edges = g.num_edges
+        deref(self.inner_Graph).edge_list = g.edge_list
+        deref(self.inner_Graph).adj_list = g.adj_list
         deref(self.inner_Data).g=self.inner_Graph
         deref(self.inner_Data).s_t= transition.s_t
         deref(self.inner_Data).a_t=transition.a_t
@@ -241,10 +249,10 @@ cdef class py_Memory:
         self.inner_Graph =shared_ptr[Graph](new Graph())
         # g = self.GenNetwork(mvcenv.graph)
         g = mvcenv.graph
-        deref(self.inner_Graph).num_nodes= g.num_nodes
-        deref(self.inner_Graph).num_edges=g.num_edges
-        deref(self.inner_Graph).edge_list=g.edge_list
-        deref(self.inner_Graph).adj_list=g.adj_list
+        deref(self.inner_Graph).num_nodes = g.num_nodes
+        deref(self.inner_Graph).num_edges = g.num_edges
+        deref(self.inner_Graph).edge_list = g.edge_list
+        deref(self.inner_Graph).adj_list = g.adj_list
         self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(mvcenv.norm, mvcenv.help_func, mvcenv.sign))
         deref(self.inner_MvcEnv).norm = mvcenv.norm
         deref(self.inner_MvcEnv).help_func = mvcenv.help_func

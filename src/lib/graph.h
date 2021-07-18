@@ -10,13 +10,15 @@ class Graph
 {
 public:
     Graph();
-    Graph(const int _num_nodes, const int _num_edges, const int* edges_from, const int* edges_to, const double* _edge_weights, double** _node_feats);
+    Graph(const int _num_nodes, const int _num_edges, const int* edges_from, const int* edges_to, 
+          const double* _edge_weights, double** _node_feats, const double _NN_percent);
     ~Graph();
     int num_nodes;
     int num_edges;
+    double NN_percent;
     std::vector< std::vector< int > > adj_list;
-    std::vector< std::pair<int, int> > edge_list;
-    std::vector<double> edge_weights;
+    std::vector< std::pair< int, int > > edge_list;
+    std::vector< double > edge_weights;
     std::vector< std::vector< double > > EdgeWeight;
     std::vector< std::vector< double > > node_feats;
 };

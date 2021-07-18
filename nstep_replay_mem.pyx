@@ -42,6 +42,7 @@ cdef class py_ReplaySample:
     cdef G2P(self, Graph graph1):
         num_nodes = graph1.num_nodes     #得到Graph对象的节点个数
         num_edges = graph1.num_edges    #得到Graph对象的连边个数
+        NN_percent = graph1.NN_percent
         edge_list = graph1.edge_list
         edge_weights = graph1.edge_weights
         node_feats = graph1.node_feats
@@ -62,7 +63,8 @@ cdef class py_ReplaySample:
         for j in range(num_nodes):
             cdouble_vec_node_feats[j,:] = node_feats[j]
         # print("saved data to cvectors")
-        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights, cdouble_vec_node_feats)
+        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights, cdouble_vec_node_feats, 
+                              NN_percent)
 
 cdef class py_NStepReplayMem:
     cdef shared_ptr[NStepReplayMem] inner_NStepReplayMem
@@ -77,26 +79,13 @@ cdef class py_NStepReplayMem:
         Unless the class implementation file is rewritten to include the python call interface, there is no way to avoid creating objects on the heap.'''
         #print('默认构造函数。')
         self.inner_NStepReplayMem = shared_ptr[NStepReplayMem](new NStepReplayMem(memory_size))
-    # def __dealloc__(self):
-    #     if self.inner_NStepReplayMem != NULL:
-    #         self.inner_NStepReplayMem.reset()
-    #         gc.collect()
-    #     if self.inner_Graph != NULL:
-    #         self.inner_Graph.reset()
-    #         gc.collect()
-    #     if self.inner_MvcEnv != NULL:
-    #         self.inner_MvcEnv.reset()
-    #         gc.collect()
-    #     if self.inner_ReplaySample != NULL:
-    #         self.inner_ReplaySample.reset()
-    #         gc.collect()
-
-
+        
     def Add(self, mvcenv, int nstep):
         self.inner_Graph =shared_ptr[Graph](new Graph())
         g = mvcenv.graph
-        deref(self.inner_Graph).num_nodes= g.num_nodes
-        deref(self.inner_Graph).num_edges=g.num_edges
+        deref(self.inner_Graph).num_nodes = g.num_nodes
+        deref(self.inner_Graph).num_edges = g.num_edges
+        deref(self.inner_Graph).NN_percent = g.NN_percent
         deref(self.inner_Graph).edge_list = g.edge_list
         deref(self.inner_Graph).adj_list = g.adj_list
         deref(self.inner_Graph).edge_weights = g.edge_weights
@@ -160,6 +149,7 @@ cdef class py_NStepReplayMem:
     cdef G2P(self, Graph graph1):
         num_nodes = graph1.num_nodes     #得到Graph对象的节点个数
         num_edges = graph1.num_edges    #得到Graph对象的连边个数
+        NN_percent = graph1.NN_percent
         edge_list = graph1.edge_list
         edge_weights = graph1.edge_weights
         node_feats = graph1.node_feats
@@ -177,4 +167,5 @@ cdef class py_NStepReplayMem:
         cdef int j
         for j in range(num_nodes):
             cdouble_vec_node_feats[j,:] = node_feats[j]
-        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights, cdouble_vec_node_feats)
+        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights, cdouble_vec_node_feats, 
+                              NN_percent)

@@ -41,11 +41,8 @@ cdef class py_PrepareBatchGraph:
     def __cinit__(self, aggregatorID, node_init_dim, edge_init_dim, ignore_covered_edges, include_selected_nodes, embeddingMethod):
         self.inner_PrepareBatchGraph = shared_ptr[PrepareBatchGraph](new PrepareBatchGraph(aggregatorID, node_init_dim, edge_init_dim, ignore_covered_edges, 
                                                                                            include_selected_nodes, embeddingMethod))
-    # def __dealloc__(self):
-    #     if self.inner_PrepareBatchGraph != NULL:
-    #         self.inner_PrepareBatchGraph.reset()
-    #         gc.collect()
-    def SetupTrain(self, idxes, g_list,covered, list actions):
+
+    def SetupTrain(self, idxes, g_list, covered, list actions):
         cdef shared_ptr[Graph] inner_Graph
         cdef vector[shared_ptr[Graph]] inner_glist
         for _g in g_list:
@@ -53,6 +50,7 @@ cdef class py_PrepareBatchGraph:
             inner_Graph = shared_ptr[Graph](new Graph())
             deref(inner_Graph).num_nodes = _g.num_nodes
             deref(inner_Graph).num_edges = _g.num_edges
+            deref(inner_Graph).NN_percent = _g.NN_percent
             deref(inner_Graph).edge_list = _g.edge_list
             deref(inner_Graph).adj_list = _g.adj_list
             deref(inner_Graph).edge_weights = _g.edge_weights
@@ -75,6 +73,7 @@ cdef class py_PrepareBatchGraph:
             inner_Graph = shared_ptr[Graph](new Graph())
             deref(inner_Graph).num_nodes = _g.num_nodes
             deref(inner_Graph).num_edges = _g.num_edges
+            deref(inner_Graph).NN_percent = _g.NN_percent
             deref(inner_Graph).edge_list = _g.edge_list
             deref(inner_Graph).adj_list = _g.adj_list
             deref(inner_Graph).edge_weights = _g.edge_weights

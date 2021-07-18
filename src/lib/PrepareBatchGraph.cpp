@@ -107,7 +107,8 @@ std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int 
             break;
     }    
     counter = 0;
-    int n = 0;
+    // number of nodes which are completely uncovered
+    int node_cnt = 0;
     // iterate over all edges
     for (auto& p : g->edge_list)
     {
@@ -121,18 +122,18 @@ std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int 
         {
             if (idx_map[p.first] < 0)
             {
-                n++;
+                node_cnt++;
             }
             if (idx_map[p.second] < 0)
             {
-                n++;
+                node_cnt++;
             }
                 
             idx_map[p.first] = 0;
             idx_map[p.second] = 0;
         }
     }
-    resultList[0] = n;
+    resultList[0] = node_cnt;
     resultList[1] = excluded_nodes;
     return resultList;
 }

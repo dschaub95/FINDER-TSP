@@ -110,6 +110,7 @@ cdef class py_MvcEnv:
     cdef G2P(self, Graph graph1):
         num_nodes = graph1.num_nodes     #得到Graph对象的节点个数
         num_edges = graph1.num_edges    #得到Graph对象的连边个数
+        NN_percent = graph1.NN_percent
         edge_list = graph1.edge_list
         edge_weights = graph1.edge_weights
         node_feats = graph1.node_feats
@@ -129,7 +130,7 @@ cdef class py_MvcEnv:
         for j in range(num_nodes):
              cdouble_vec_node_feats[j,:] = node_feats[j]
         # print("test:", cdouble_vec_node_feats)
-        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights, cdouble_vec_node_feats)
+        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights, cdouble_vec_node_feats, NN_percent)
 
 
     # cdef reshape_Graph(self, int _num_nodes, int _num_edges, int[:] edges_from, int[:] edges_to):

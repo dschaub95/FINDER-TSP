@@ -99,6 +99,7 @@ class FINDER:
         self.cfg['g_type'] = 'tsp_2d'
         self.cfg['NUM_MIN'] = 15
         self.cfg['NUM_MAX'] = 20
+        self.cfg['NN_percent'] = 1.0
         self.cfg['n_generator'] = 1000
 
         # Decoder hyperparameters
@@ -242,7 +243,7 @@ class FINDER:
         config = tf.ConfigProto(device_count={"CPU": 8},  # limit to num_cpu_core CPU usage
                                 inter_op_parallelism_threads=100,
                                 intra_op_parallelism_threads=100,
-                                log_device_placement=True)
+                                log_device_placement=False)
         config.gpu_options.allow_growth = True
         self.session = tf.Session(config=config)
 
@@ -727,9 +728,9 @@ class FINDER:
                     f_out.write('%.16f\n'%(frac/n_valid))
                 f_out.flush()
                 print('iter %d, eps %.4f, average tour length: %.6f'%(iter, eps, frac/n_valid))
-                print ('testing 200 graphs time: %.2fs'%(test_end-test_start))
+                print ('testing %d graphs time: %.2fs'%(self.cfg['n_valid'], test_end-test_start))
                 N_end = time.clock()
-                print ('300 iterations total time: %.2fs\n'%(N_end-N_start))
+                print ('%d iterations total time: %.2fs\n'%(self.cfg['save_interval'], N_end-N_start))
                 sys.stdout.flush()
                 model_path = '%s/nrange_%d_%d_iter_%d.ckpt' % (save_dir, NUM_MIN, NUM_MAX, iter)
                 self.SaveModel(model_path)
@@ -1259,6 +1260,7 @@ class FINDER:
                 self.InsertGraph(g, is_test=True)
 
     def GenNetwork(self, g):    #networkx2four
+        cdef double NN_percent = self.cfg['NN_percent']
         # transforms the networkx graph object into C graph object using external pyx module
         nodes = g.nodes()
         edges = g.edges()
@@ -1278,7 +1280,9 @@ class FINDER:
             B = np.array([0])
             W = np.array([0])
             F = np.array([0])
-        return graph.py_Graph(len(nodes), len(edges), A, B, W, F)
+        num_nodes = len(nodes)
+        num_edges = len(edges)
+        return graph.py_Graph(num_nodes, num_edges, A, B, W, F, NN_percent)
              
 
     def InsertGraph(self, g, is_test):

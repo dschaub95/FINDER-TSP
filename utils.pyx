@@ -16,6 +16,7 @@ cdef class py_Utils:
         self.inner_Graph = shared_ptr[Graph](new Graph())
         deref(self.inner_Graph).num_nodes = _g.num_nodes
         deref(self.inner_Graph).num_edges = _g.num_edges
+        deref(self.inner_Graph).NN_percent = _g.NN_percent
         deref(self.inner_Graph).edge_list = _g.edge_list
         deref(self.inner_Graph).adj_list = _g.adj_list
         deref(self.inner_Graph).edge_weights = _g.edge_weights
