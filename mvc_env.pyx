@@ -23,6 +23,7 @@ cdef class py_MvcEnv:
         self.inner_Graph = shared_ptr[Graph](new Graph())
         deref(self.inner_Graph).num_nodes = _g.num_nodes
         deref(self.inner_Graph).num_edges = _g.num_edges
+        deref(self.inner_Graph).NN_percent = _g.NN_percent
         deref(self.inner_Graph).edge_list = _g.edge_list
         deref(self.inner_Graph).adj_list = _g.adj_list
         deref(self.inner_Graph).edge_weights = _g.edge_weights
@@ -131,16 +132,3 @@ cdef class py_MvcEnv:
              cdouble_vec_node_feats[j,:] = node_feats[j]
         # print("test:", cdouble_vec_node_feats)
         return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights, cdouble_vec_node_feats, NN_percent)
-
-
-    # cdef reshape_Graph(self, int _num_nodes, int _num_edges, int[:] edges_from, int[:] edges_to):
-    #     cdef int *cint_edges_from = <int*>malloc(_num_edges*sizeof(int))
-    #     cdef int *cint_edges_to = <int*>malloc(_num_edges*sizeof(int))
-    #     cdef int i
-    #     for i in range(_num_edges):
-    #         cint_edges_from[i] = edges_from[i]
-    #     for i in range(_num_edges):
-    #         cint_edges_to[i] = edges_to[i]
-    #     free(cint_edges_from)
-    #     free(cint_edges_to)
-    #     return  new Graph(_num_nodes,_num_edges,&cint_edges_from[0],&cint_edges_to[0])

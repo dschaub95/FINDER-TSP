@@ -42,7 +42,6 @@ cdef class py_Graph:
             edge_weights = np.array([x for x in arg[4]], dtype=np.double)
             node_feats = np.array([x for x in arg[5]], dtype=np.double)
             _NN_percent = arg[6]
-            
             self.reshape_Graph(_num_nodes,  _num_edges,  edges_from,  edges_to, edge_weights, node_feats, _NN_percent)   
         else:
             print('Error: py_Graph class was not initialized successfully because the number of parameters provided did not match, and the number of parameters was not 0 or 6.')
