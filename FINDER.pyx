@@ -21,6 +21,7 @@ import scipy.linalg as linalg
 from tqdm import tqdm
 from scipy.sparse import csr_matrix
 from itertools import combinations
+
 from distutils.util import strtobool
 
 import PrepareBatchGraph
@@ -99,7 +100,7 @@ class FINDER:
         self.cfg['g_type'] = 'tsp_2d'
         self.cfg['NUM_MIN'] = 15
         self.cfg['NUM_MAX'] = 20
-        self.cfg['NN_percent'] = 1.0
+        self.cfg['NN_ratio'] = 1.0
         self.cfg['n_generator'] = 1000
 
         # Decoder hyperparameters
@@ -902,7 +903,6 @@ class FINDER:
         self.inputs['end_param'] = prepareBatchGraph.end_param
         # print("e2n matrix:", print(type(self.inputs['e2nsum_param'])))
         # print("n2nsum_param:", self.inputs['n2nsum_param'])
-        # print("orig weights", g_list[0].edge_weights)
         self.inputs['subgsum_param'] = prepareBatchGraph.subgsum_param
         # print("subgsum_param:", self.inputs['subgsum_param'])
         self.inputs['aux_input'] = prepareBatchGraph.aux_feat
@@ -1249,7 +1249,7 @@ class FINDER:
                     self.InsertGraph(g, is_test=True)
                     counter += 1
                 except:
-                    print(fname)
+                    print("An error occured loading file:", fname)
                     continue
             print("\nSucessfully loaded {} validation graphs!".format(counter))
         else:
@@ -1260,7 +1260,7 @@ class FINDER:
                 self.InsertGraph(g, is_test=True)
 
     def GenNetwork(self, g):    #networkx2four
-        cdef double NN_percent = self.cfg['NN_percent']
+        cdef double NN_ratio = self.cfg['NN_ratio']
         # transforms the networkx graph object into C graph object using external pyx module
         nodes = g.nodes()
         edges = g.edges()
@@ -1269,7 +1269,8 @@ class FINDER:
             A = np.array(a)
             B = np.array(b)
             # edge weights
-            W = np.array([g[n][m]['weight'] for n, m in zip(a, b)])
+            # W = np.array([g[n][m]['weight'] for n, m in zip(a, b)])
+            W = np.array([[g[n][m]['weight'] if m != n else 0.0 for m in nodes] for n in nodes])
             # node features (node position)
             try:
                 F = np.array([g.nodes[k]['coord'] for k in range(len(nodes))])
@@ -1282,7 +1283,7 @@ class FINDER:
             F = np.array([0])
         num_nodes = len(nodes)
         num_edges = len(edges)
-        return graph.py_Graph(num_nodes, num_edges, A, B, W, F, NN_percent)
+        return graph.py_Graph(num_nodes, num_edges, A, B, W, F, NN_ratio)
              
 
     def InsertGraph(self, g, is_test):
@@ -1510,4 +1511,26 @@ class FINDER:
             self.nStepReplayMem.batch_update(tree_idx, result[1])
             loss += result[2]*bsize
         return loss / len(g_list)
-    
+'''
+    def beam_search_solver(num_nodes, k):
+        # first node is always zero
+        sequences = [[list(0), 1]]
+        # walk over each step in sequence
+        for step in range(num_nodes - 1):
+            all_candidates = list()
+            # expand each current candidate
+            for i in range(len(sequences)):
+                cur_seq, cur_score = sequences[i]
+                # make predictions based on current sequence
+                # missing!
+                possible_actions = []
+                qvalues = []
+                for k, action in enumerate(possible_actions):
+                    candidate = [cur_seq + [action], cur_score * qvalues[k]]
+                    all_candidates.append(candidate)
+            # order all candidates by score
+            ordered = sorted(all_candidates, key=lambda tup:tup[1])
+            # select k best
+            sequences = ordered[:k]
+        return sequences
+'''    
