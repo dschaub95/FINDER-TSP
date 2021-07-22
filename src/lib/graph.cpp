@@ -6,11 +6,10 @@
 #include "stdio.h"
 
 
-Graph::Graph() : num_nodes(0), num_edges(0), NN_percent(0)
+Graph::Graph() : num_nodes(0), num_edges(0), NN_ratio(0)
 {
     edge_list.clear();
     adj_list.clear();
-    edge_weights.clear();
     EdgeWeight.clear();
     node_feats.clear();
 }
@@ -19,27 +18,25 @@ Graph::~Graph()
 {
     edge_list.clear();
     adj_list.clear();
-    edge_weights.clear();
     EdgeWeight.clear();
     node_feats.clear();
     num_nodes = 0;
     num_edges = 0;
-    NN_percent = 0;
+    NN_ratio = 0;
 }
 
 Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, const int* edges_to, 
-             const double* _edge_weights, double** _node_feats, const double _NN_percent)
+             double** _EdgeWeight, double** _node_feats, const double _NN_ratio)
         : num_nodes(_num_nodes), num_edges(_num_edges)
 {
-    NN_percent = _NN_percent;
+    NN_ratio = _NN_ratio;
     edge_list.resize(num_edges);
     adj_list.resize(num_nodes);
     node_feats.resize(num_nodes);
-    EdgeWeight.resize(num_nodes, std::vector<double>(num_nodes, 100.0));
+    EdgeWeight.resize(num_nodes, std::vector<double>(num_nodes, 0.0));
     
-    // printf("Clearing edge weights list\n");
     // calc number of allowed neighbors based on input percent value
-    int knn = std::ceil(NN_percent * (num_nodes - 1));
+    int knn = std::ceil(NN_ratio * (num_nodes - 1));
     
     // get number of node features per node
     // save node features, hard coded 2 for now
@@ -51,7 +48,10 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
         {
             node_feats[i].push_back(_node_feats[i][j]);
         }
-        EdgeWeight[i][i] = 0.0;
+        for (int j = 0; j < num_nodes; ++j)
+        {
+            EdgeWeight[i][j] = _EdgeWeight[i][j];
+        }
     }
     // check whether the graph has already been truncated (number edges is at least as high as given by the kNN)
     
@@ -65,9 +65,6 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
             adj_list[x].push_back(y);
             adj_list[y].push_back(x);
             edge_list[i] = std::make_pair(edges_from[i], edges_to[i]);
-            edge_weights.push_back(_edge_weights[i]);
-            EdgeWeight[x][y] = _edge_weights[i];
-            EdgeWeight[y][x] = _edge_weights[i];
         }
     }
     else
@@ -75,42 +72,26 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
         // make sure 
         assert(num_edges == num_nodes * (num_nodes - 1) / 2);
         //printf("knn: %d\n", knn);
-        //printf("nn percent: %f\n", NN_percent);
+        //printf("nn percent: %f\n", NN_ratio);
         //printf("num edges: %d\n", num_edges);
         //printf("num nodes: %d\n", num_nodes);
         edge_list.clear();
         std::vector< std::pair< int, double > > neighbors;    
-        int k = 0;
         for (int i = 0; i < num_nodes; ++i)
         {
-            // make edge weights accessable
-            for (int j = 0; j < num_nodes; ++j)
-            {
-                if (j == i)
-                {
-                    continue;
-                }
-                if (k < num_edges)
-                {
-                    int x = edges_from[k], y = edges_to[k];
-                    EdgeWeight[x][y] = _edge_weights[k];
-                    EdgeWeight[y][x] = _edge_weights[k];
-                }
-                ++k;
-            }
             // get extract neighborhood info
             neighbors.clear();
             for (int j = 0; j < num_nodes; ++j)
             {
+                // printf("%f ", EdgeWeight[i][j]);
                 if (j == i)
                 {
                     continue;
                 }
-                
                 neighbors.push_back( std::make_pair(j, EdgeWeight[i][j]) ); 
                 
                 //printf("EdgeWeight[%d][%d]: %f\n", i, j, EdgeWeight[i][j]);
-                //printf("_edge_weights[%d]: %f\n", k, _edge_weights[k]);
+                
             }
             // select only the x% nearest neighbors of each node
             std::sort(neighbors.begin(), neighbors.end(), []
@@ -126,8 +107,6 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
             for (int j = 0; j < n; ++j)
             {
                 int neighbor = neighbors[j].first;
-                double edge_weight = neighbors[j].second;
-                //printf("edge weight: %f\n", edge_weight);
                 std::pair< int, int > cur_edge =  std::make_pair(i, neighbor);
                 std::pair< int, int > counter_edge =  std::make_pair(neighbor, i);
 
@@ -136,22 +115,17 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
 		            //printf("edge first: %d\n", cur_edge.first);
                     //printf("edge second: %d\n", cur_edge.second);
                     edge_list.push_back(cur_edge);
-                    edge_weights.push_back(edge_weight);
 
                     adj_list[i].push_back(neighbor);
                     adj_list[neighbor].push_back(i);
 	            }
             }
-            
         }
         num_edges = edge_list.size();
         //printf("num edges: %d\n", num_edges);
-        //printf("num edgeweights: %d\n", edge_weights.size());
     }
     
     // printf("node_feats: %f, %f \n", node_feats[0][0], node_feats[0][1]);
-    // printf("Sucessfully added %d elements to edge weights list for a graph of size %d\n", (int)edge_weights.size(), num_nodes);
-    // printf("edge_weight: %f\n", edge_weights[0]);
 }
 
 GSet::GSet()
