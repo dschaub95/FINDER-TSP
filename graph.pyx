@@ -24,12 +24,12 @@ cdef class py_Graph:
         
         cdef int _num_nodes
         cdef int _num_edges
-        cdef double _NN_percent
+        cdef double _NN_ratio
         
         cdef int[:] edges_from
         cdef int[:] edges_to
-        cdef double[:] edge_weights
         cdef double[:,:] node_feats
+        cdef double[:,:] EdgeWeight
         
         if len(arg) == 0:
             deref(self.inner_graph).num_edges = 0
@@ -39,10 +39,11 @@ cdef class py_Graph:
             _num_edges = arg[1]
             edges_from = np.array([int(x) for x in arg[2]], dtype=np.int32)
             edges_to = np.array([int(x) for x in arg[3]], dtype=np.int32)
-            edge_weights = np.array([x for x in arg[4]], dtype=np.double)
+            EdgeWeight = np.array([x for x in arg[4]], dtype=np.double)
             node_feats = np.array([x for x in arg[5]], dtype=np.double)
-            _NN_percent = arg[6]
-            self.reshape_Graph(_num_nodes,  _num_edges,  edges_from,  edges_to, edge_weights, node_feats, _NN_percent)   
+            _NN_ratio = arg[6]
+            # print("True weights\n", arg[4])
+            self.reshape_Graph(_num_nodes,  _num_edges,  edges_from,  edges_to, EdgeWeight, node_feats, _NN_ratio)   
         else:
             print('Error: py_Graph class was not initialized successfully because the number of parameters provided did not match, and the number of parameters was not 0 or 6.')
 
@@ -55,8 +56,8 @@ cdef class py_Graph:
         return deref(self.inner_graph).num_edges
 
     @property
-    def NN_percent(self):
-        return deref(self.inner_graph).NN_percent
+    def NN_ratio(self):
+        return deref(self.inner_graph).NN_ratio
 
     @property
     def adj_list(self):
@@ -65,11 +66,7 @@ cdef class py_Graph:
     @property
     def edge_list(self):
         return deref(self.inner_graph).edge_list
-    # Tsp change
-    @property
-    def edge_weights(self):
-        return deref(self.inner_graph).edge_weights
-    
+
     @property
     def node_feats(self):
         return deref(self.inner_graph).node_feats
@@ -78,13 +75,13 @@ cdef class py_Graph:
     def EdgeWeight(self):
         return deref(self.inner_graph).EdgeWeight
 
-    cdef reshape_Graph(self, int _num_nodes, int _num_edges, int[:] edges_from, int[:] edges_to, double[:] edge_weights, 
-                       double[:,:] node_feats, double _NN_percent):
+    cdef reshape_Graph(self, int _num_nodes, int _num_edges, int[:] edges_from, int[:] edges_to, 
+                       double[:,:] EdgeWeight, double[:,:] node_feats, double _NN_ratio):
         cdef int *cint_edges_from = <int*>malloc(_num_edges*sizeof(int))
         cdef int *cint_edges_to = <int*>malloc(_num_edges*sizeof(int))
         # tsp change
-        cdef double *cdouble_edge_weights = <double*>malloc(_num_edges*sizeof(double))
         cdef double **cdouble_vec_node_feats = <double**>malloc(_num_nodes*sizeof(double*))
+        cdef double **cdouble_EdgeWeight = <double**>malloc(_num_nodes*sizeof(double*))
         cdef int i
         # print("node feats 0", node_feats[0][0], node_feats[0][1])
         for i in range(_num_edges):
@@ -92,19 +89,18 @@ cdef class py_Graph:
         for i in range(_num_edges):
             cint_edges_to[i] = edges_to[i]
         # tsp change
-        for i in range(_num_edges):
-            cdouble_edge_weights[i] = edge_weights[i]
         for i in range(_num_nodes):
             cdouble_vec_node_feats[i] = &node_feats[i, 0]
+            cdouble_EdgeWeight[i] = &EdgeWeight[i, 0]    
         # print("sucessfully saved features")
         # graph constructor changed
         self.inner_graph = shared_ptr[Graph](new Graph(_num_nodes, _num_edges, &cint_edges_from[0], &cint_edges_to[0], 
-                                                       &cdouble_edge_weights[0], &cdouble_vec_node_feats[0], _NN_percent))
+                                                       &cdouble_EdgeWeight[0], &cdouble_vec_node_feats[0], _NN_ratio))
         
         free(cint_edges_from)
         free(cint_edges_to)
-        free(cdouble_edge_weights)
         free(cdouble_vec_node_feats)
+        free(cdouble_EdgeWeight)
 
 
 cdef class py_GSet:
@@ -129,24 +125,25 @@ cdef class py_GSet:
     cdef G2P(self, Graph graph):
         num_nodes = graph.num_nodes     #得到Graph对象的节点个数
         num_edges = graph.num_edges    #得到Graph对象的连边个数
-        NN_percent = graph.NN_percent
+        NN_ratio = graph.NN_ratio
         edge_list = graph.edge_list
-        edge_weights = graph.edge_weights
         node_feats = graph.node_feats
+        EdgeWeight = graph.EdgeWeight
 
         cint_edges_from = np.zeros([num_edges], dtype=np.int)
         cint_edges_to = np.zeros([num_edges], dtype=np.int)
-        cdouble_edge_weights = np.zeros([num_edges], dtype=np.double)
         cdouble_vec_node_feats = np.zeros([num_nodes, 2], dtype=np.double)
+        cdouble_EdgeWeight = np.zeros([num_nodes, num_nodes], dtype=np.double)
         
         cdef int i
         for i in range(num_edges):
             cint_edges_from[i]= edge_list[i].first
             cint_edges_to[i] = edge_list[i].second
-            cdouble_edge_weights[i] = edge_weights[i]
         cdef int j
         for j in range(num_nodes):
             cdouble_vec_node_feats[j,:] = node_feats[j]
-        return py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_edge_weights, cdouble_vec_node_feats, NN_percent)
+            cdouble_EdgeWeight[j,:] = EdgeWeight[j]
+        return py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_EdgeWeight, 
+                        cdouble_vec_node_feats, NN_ratio)
 
 

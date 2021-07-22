@@ -10,14 +10,13 @@ from libcpp.pair cimport pair
 cdef extern from "./src/lib/graph.h":
     cdef cppclass Graph:
         Graph()except+
-        Graph(const int _num_nodes, const int _num_edges, const int* edges_from, const int* edges_to, const double* _edge_weights, 
-              double** _node_feats, const double _NN_percent) except+
+        Graph(const int _num_nodes, const int _num_edges, const int* edges_from, const int* edges_to, 
+              double** _EdgeWeight, double** _node_feats, const double _NN_ratio) except+
         int num_nodes
         int num_edges
-        double NN_percent
+        double NN_ratio
         vector[vector[int]] adj_list
         vector[pair[int,int]] edge_list
-        vector[double] edge_weights
         vector[vector[double]] EdgeWeight
         vector[vector[double]] node_feats
 
