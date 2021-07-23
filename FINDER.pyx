@@ -748,7 +748,7 @@ class FINDER:
     def Test(self, int gid):
         cdef int help_func = self.cfg['help_func']
         g_list = []
-        self.test_env.s0(self.TestSet.Get(gid), help_func)
+        self.test_env.s0(self.TestSet.Get(gid))
         g_list.append(self.test_env.graph)
         # self.test_env.stepWithoutReward(0)
         cdef double cost = 0.0
@@ -795,7 +795,7 @@ class FINDER:
         # get intial sample
         for i in range(num_env):
             g_sample = TrainSet.Sample()
-            self.env_list[i].s0(g_sample, help_func)
+            self.env_list[i].s0(g_sample)
             
             self.g_list[i] = self.env_list[i].graph
             # print("Inserted graph!")
@@ -813,7 +813,7 @@ class FINDER:
                     self.nStepReplayMem.Add(self.env_list[i], n_step)
                     # print("Sampling new graph..") 
                     g_sample = TrainSet.Sample()
-                    self.env_list[i].s0(g_sample, help_func)
+                    self.env_list[i].s0(g_sample)
                     self.g_list[i] = self.env_list[i].graph
                     # self.env_list[i].step(0)
                     # print("added new sample to the graph list, current length:", len(self.g_list))
@@ -1102,7 +1102,7 @@ class FINDER:
     def GetSol(self, int gid, int step=1):
         cdef int help_func = self.cfg['help_func']
         g_list = []
-        self.test_env.s0(self.TestSet.Get(gid), help_func)
+        self.test_env.s0(self.TestSet.Get(gid))
         g_list.append(self.test_env.graph)
         cdef double cost = 0.0
         cdef int new_action
@@ -1311,7 +1311,7 @@ class FINDER:
     def GetSolution(self, int gid, int step=1):
         cdef int help_func = self.cfg['help_func']
         g_list = []
-        self.test_env.s0(self.TestSet.Get(gid), help_func)
+        self.test_env.s0(self.TestSet.Get(gid))
         g_list.append(self.test_env.graph)
         sol = []
         start = time.time()

@@ -19,7 +19,7 @@ cdef class py_MvcEnv:
     #     if self.inner_Graph != NULL:
     #         self.inner_Graph.reset()
     #         gc.collect()
-    def s0(self, _g, int _help_func):
+    def s0(self, _g):
         self.inner_Graph = shared_ptr[Graph](new Graph())
         deref(self.inner_Graph).num_nodes = _g.num_nodes
         deref(self.inner_Graph).num_edges = _g.num_edges
@@ -28,7 +28,7 @@ cdef class py_MvcEnv:
         deref(self.inner_Graph).adj_list = _g.adj_list
         deref(self.inner_Graph).node_feats = _g.node_feats
         deref(self.inner_Graph).EdgeWeight = _g.EdgeWeight
-        deref(self.inner_MvcEnv).s0(self.inner_Graph, _help_func)
+        deref(self.inner_MvcEnv).s0(self.inner_Graph)
 
     def step(self, int a):
         return deref(self.inner_MvcEnv).step(a)

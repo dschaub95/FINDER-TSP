@@ -14,7 +14,7 @@ public:
 
     ~MvcEnv();
 
-    void s0(std::shared_ptr<Graph> _g, int _help_func);
+    void s0(std::shared_ptr<Graph> _g);
 
     double step(int a);
 

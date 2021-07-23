@@ -40,7 +40,7 @@ MvcEnv::~MvcEnv()
     avail_list.clear();
 }
 
-void MvcEnv::s0(std::shared_ptr<Graph> _g, int _help_func)
+void MvcEnv::s0(std::shared_ptr<Graph> _g)
 {
     graph = _g;
     // help_func = _help_func;
