@@ -30,7 +30,8 @@ sparseMatrix::~sparseMatrix()
     edge_feats.clear();
     edge_sum.clear();
     aux_feat.clear();
-    avail_act_cnt.clear();
+    avail_node_cnt.clear();
+    avail_edge_cnt.clear();
 }
 
 PrepareBatchGraph::~PrepareBatchGraph()
@@ -51,19 +52,23 @@ PrepareBatchGraph::~PrepareBatchGraph()
     n2esum_param = nullptr;
     start_param = nullptr;
     end_param = nullptr;
-    
+    state_sum_param = nullptr;
+
     idx_map_list.clear();
     node_feats.clear();
     edge_feats.clear();
     edge_sum.clear();
     aux_feat.clear();
-    avail_act_cnt.clear();
+    avail_node_cnt.clear();
+    avail_edge_cnt.clear();
 }
 
-std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int num, const int* covered, int& counter, std::vector<int>& idx_map)
+std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int num, const int* covered, 
+                                                  std::vector<int>& idx_map)
 // calculates number of available actions
 {
-    std::set<int> c;
+    std::set<int> to_delete_set;
+    std::set<int> covered_set;
     std::vector<int> resultList;
     resultList.resize(2);
     idx_map.resize(g->num_nodes);
@@ -73,8 +78,11 @@ std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int 
         idx_map[i] = -1;
     }
     
-    
-    int excluded_nodes = 0;
+    for (int i = 0; i < num; ++i)
+    {
+        covered_set.insert(covered[i]);
+    }
+
     switch(include_selected_nodes)
     {
         case 0:
@@ -82,8 +90,7 @@ std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int 
             // delete all nodes that have been selected until this point 
             for (int i = 0; i < num; ++i)
             {
-                c.insert(covered[i]);
-                excluded_nodes++;  
+                to_delete_set.insert(covered[i]);
             }
             break;
         }
@@ -92,8 +99,7 @@ std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int 
             // include first and last selected node so it is available during network embedding
             for (int i = 1; i < num-1; ++i)
             {
-                c.insert(covered[i]);
-                excluded_nodes++;  
+                to_delete_set.insert(covered[i]);
             }
             break;
         }
@@ -106,35 +112,56 @@ std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int 
         default:
             break;
     }    
-    counter = 0;
     // number of nodes which are completely uncovered
     int node_cnt = 0;
+    int edge_cnt = 0;
     // iterate over all edges
-    for (auto& p : g->edge_list)
+    for (int j = 0; j < (int)g->num_nodes; ++j)
     {
-
-        // find all edges that are connected to no covered node
-        if (c.count(p.first) || c.count(p.second))
+        if (to_delete_set.count(j) == false)
         {
-            counter++;     
-        } 
-        else 
-        {
-            if (idx_map[p.first] < 0)
-            {
-                node_cnt++;
-            }
-            if (idx_map[p.second] < 0)
-            {
-                node_cnt++;
-            }
-                
-            idx_map[p.first] = 0;
-            idx_map[p.second] = 0;
+            idx_map[j] = 0;
+            node_cnt++;
         }
     }
+    for (auto& p : g->edge_list)
+    {
+        edge_cnt += 2;
+        if (ignore_covered_edges == 1)
+        {
+            if (to_delete_set.count(p.first) || to_delete_set.count(p.second))
+            {
+                edge_cnt -= 2;
+                continue;
+            }
+            if (covered_set.count(p.first) && covered_set.count(p.second))
+            {
+                edge_cnt -= 2;
+            }
+        }
+        else
+        {
+            if (to_delete_set.count(p.first) || to_delete_set.count(p.second))
+            {
+                edge_cnt -= 2;
+            }
+        }
+    }
+    // add links between subsequent nodes in the current tour
+    if (ignore_covered_edges == 1)
+    {
+        if (num > 1)
+        {
+            edge_cnt += 2 * (num - to_delete_set.size());
+        }
+        if (include_selected_nodes == 1 && num >= 2)
+        {
+            edge_cnt -= 4;
+        }
+    }
+    // ignore inner edges between nodes that have already been selected
     resultList[0] = node_cnt;
-    resultList[1] = excluded_nodes;
+    resultList[1] = edge_cnt;
     return resultList;
 }
 
@@ -147,11 +174,13 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
     rep_global = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     start_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     end_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    state_sum_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     // idxes.size() = BATCHSIZE, vector of vectors
     idx_map_list.resize(idxes.size());
     // simple vector < int >
-    avail_act_cnt.resize(idxes.size());
-    
+    avail_node_cnt.resize(idxes.size());
+    avail_edge_cnt.resize(idxes.size());
+
     int node_cnt = 0;
     int edge_cnt = 0;
     for (int i = 0; i < (int)idxes.size(); ++i)
@@ -163,37 +192,21 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
 
         auto g = g_list[idxes[i]];
 
-        int counter;
-        int excluded_nodes;
-        // save ratio of covered nodes compared to all nodes
         // calc counter, twohop_number and threehop_number + avail
-        auto resultStatus = GetStatusInfo(g, covered[idxes[i]].size(), covered[idxes[i]].data(), counter, idx_map_list[i]);
-        avail_act_cnt[i] = resultStatus[0];
-        excluded_nodes = resultStatus[1];
-        // save ratio of edges that are connected to at least one covered node and all edges
+        auto resultStatus = GetStatusInfo(g, covered[idxes[i]].size(), covered[idxes[i]].data(), idx_map_list[i]);
+        avail_node_cnt[i] = resultStatus[0];
+        avail_edge_cnt[i] = resultStatus[1];
 
-        
-        node_cnt += avail_act_cnt[i];
+        node_cnt += avail_node_cnt[i];
         // calculate edge count
-        edge_cnt += avail_act_cnt[i] * (avail_act_cnt[i] - 1);
-        // ignore inner edges between nodes that have already been selected
-        if (ignore_covered_edges == 1)
-        {
-            edge_cnt -= (covered[idxes[i]].size() - excluded_nodes) * (covered[idxes[i]].size() - excluded_nodes - 1);
-            if (include_selected_nodes == 2)
-            {
-                if (covered[idxes[i]].size() > 1)
-                {
-                    edge_cnt += covered[idxes[i]].size() * 2;
-                }
-            }
-                
-        }
-        
+        edge_cnt += avail_edge_cnt[i];
     }
     // (Batchsize, all available actions in all graphs)
     // prepare in and out edges size, and subgraphs(=remaining parts of the current graph)
     // printf("Edge count calc: %d\n", edge_cnt);
+    // printf("Node count: %d\n", node_cnt);
+    // printf("Edge count full: %d\n", node_cnt*(node_cnt-1));
+    // printf("Idx count: %d\n", idxes.size());
     graph.Resize(idxes.size(), node_cnt);
     edge_sum.resize(node_cnt, std::vector<double>(edge_init_dim, 1.0));
     node_feats.resize(node_cnt, std::vector<double>(node_init_dim, 1.0));
@@ -203,6 +216,7 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
         act_select->rowNum = idxes.size();
         act_select->colNum = node_cnt;
     }
+    
     rep_global->rowNum = node_cnt;
     rep_global->colNum = idxes.size();
     
@@ -211,6 +225,9 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
 
     end_param->rowNum = idxes.size();
     end_param->colNum = node_cnt;
+
+    state_sum_param->rowNum = idxes.size();
+    state_sum_param->colNum = node_cnt;
 
     node_cnt = 0;
     edge_cnt = 0;
@@ -282,9 +299,15 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
                 end_param->colIndex.push_back(node_cnt + t);
                 end_param->value.push_back(1.0);
             }
+            if (c.count(j))
+            {
+                state_sum_param->rowIndex.push_back(i);
+                state_sum_param->colIndex.push_back(node_cnt + t);
+                state_sum_param->value.push_back(1/(double)c.size());
+            }
             t += 1;
         }
-        assert(t == avail_act_cnt[i]);
+        assert(t == avail_node_cnt[i]);
         if (actions)
         {   
             auto act = actions[idxes[i]];
@@ -337,14 +360,18 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
             // edge_feats[edge_cnt][4] = x;
             edge_cnt += 1;
         }
-        if (ignore_covered_edges == 1 && include_selected_nodes == 2)
+        if (ignore_covered_edges == 1)
         {
-            if ((int)covered[idxes[i]].size() > 1)
+            if ((int)covered[idxes[i]].size() > 1 && include_selected_nodes == 2)
             {
                 for (int j = 0; j < (int)covered[idxes[i]].size(); ++j)
                 {
                     int n_c = covered[idxes[i]][j];
                     int next_c = covered[idxes[i]][0];
+                    if (idx_map[n_c] < 0 || idx_map[next_c] < 0)
+                    {
+                        continue;
+                    }
                     if (j + 1 < (int)covered[idxes[i]].size())
                     {
                         next_c = covered[idxes[i]][j + 1];
@@ -372,7 +399,7 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
             }
         }
         // add all available actions in the current state to the node count
-        node_cnt += avail_act_cnt[i];
+        node_cnt += avail_node_cnt[i];
     }
     // printf("Edge count: %d\n", graph.num_edges);
     assert(node_cnt == (int)graph.num_nodes);
@@ -383,11 +410,11 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
     
     if (embeddingMethod == 2)
     {
-        e2nsum_param = e2n_construct(&graph);
+        e2nsum_param = e2n_construct(&graph, aggregatorID);
     }
     else if (embeddingMethod == 3)
     {
-        e2nsum_param = e2n_construct(&graph);
+        e2nsum_param = e2n_construct(&graph, aggregatorID);
         n2esum_param = n2e_construct(&graph);
     } 
 }
@@ -494,7 +521,7 @@ std::vector<std::shared_ptr<sparseMatrix>> PrepareBatchGraph::n2n_construct(Grap
     return resultList;
 }
 
-std::shared_ptr<sparseMatrix> e2n_construct(GraphStruct* graph)
+std::shared_ptr<sparseMatrix> e2n_construct(GraphStruct* graph, int aggregatorID)
 {
     std::shared_ptr<sparseMatrix> result = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     result->rowNum = graph->num_nodes;
@@ -504,7 +531,23 @@ std::shared_ptr<sparseMatrix> e2n_construct(GraphStruct* graph)
         auto& list = graph->in_edges->head[i];
 		for (int j = 0; j < (int)list.size(); ++j)
 		{
-            result->value.push_back(1.0);
+            switch(aggregatorID)
+            {
+		        case 0:
+		        {
+                    result->value.push_back(1.0);
+                    break;
+		        }
+		        case 1:
+		        {
+                    result->value.push_back(1.0/(double)list.size());
+                    break;
+		        }
+		        default:
+		            result->value.push_back(1.0);
+                    break;
+		    }
+            // result->value.push_back(1.0);
             result->rowIndex.push_back(i);
             // printf("Currently considered node: %d\n", i);
             result->colIndex.push_back(list[j].first);

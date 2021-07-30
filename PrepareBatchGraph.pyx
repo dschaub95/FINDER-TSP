@@ -117,6 +117,10 @@ cdef class py_PrepareBatchGraph:
         matrix = deref(deref(self.inner_PrepareBatchGraph).end_param)
         return self.ConvertSparseToTensor(matrix)
     @property
+    def state_sum_param(self):
+        matrix = deref(deref(self.inner_PrepareBatchGraph).state_sum_param)
+        return self.ConvertSparseToTensor(matrix)
+    @property
     def idx_map_list(self):
         return deref(self.inner_PrepareBatchGraph).idx_map_list
     @property
@@ -138,8 +142,11 @@ cdef class py_PrepareBatchGraph:
     def aggregatorID(self):
         return deref(self.inner_PrepareBatchGraph).aggregatorID
     @property
-    def avail_act_cnt(self):
-        return deref(self.inner_PrepareBatchGraph).avail_act_cnt
+    def avail_node_cnt(self):
+        return deref(self.inner_PrepareBatchGraph).avail_node_cnt
+    @property
+    def avail_edge_cnt(self):
+        return deref(self.inner_PrepareBatchGraph).avail_edge_cnt
 
     cdef ConvertSparseToTensor(self, sparseMatrix matrix):
 
