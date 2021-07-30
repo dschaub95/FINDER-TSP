@@ -104,7 +104,7 @@ def get_len_dict(folder):
         len_dict = dict(zip(file_names, test_lens))
     return len_dict
 
-def save_solutions(data_dir, fnames, solutions, best_model_file):
+def save_solutions(data_dir, fnames, solutions, model_file):
     sol_df = pd.DataFrame()
     idx = 0
     print("Saving solutions...")
@@ -115,7 +115,7 @@ def save_solutions(data_dir, fnames, solutions, best_model_file):
         tmp_df[fname] = solutions[idx]
         sol_df = pd.concat([sol_df,tmp_df.astype(int)], ignore_index=False, axis=1)
         idx += 1
-    best_model = best_model_file.split('.')[0]
+    best_model = model_file.split('.')[0]
     result_folder = data_dir.split("/")[-2]
     try:
         os.mkdir(f'results/{result_folder}')
@@ -123,7 +123,7 @@ def save_solutions(data_dir, fnames, solutions, best_model_file):
         pass
     sol_df.to_csv('results/{}/solution_{}.csv'.format(result_folder, best_model))
 
-def save_lengths(data_dir, fnames, lengths, best_model_file):
+def save_lengths(data_dir, fnames, lengths, model_file):
     lens_df = pd.DataFrame()
     idx = 0
     print("Saving solution lengths...")
@@ -134,7 +134,7 @@ def save_lengths(data_dir, fnames, lengths, best_model_file):
         tmp_df[fname] = [lengths[idx]]
         lens_df = pd.concat([lens_df,tmp_df], ignore_index=False, axis=1)
         idx += 1
-    best_model = best_model_file.split('.')[0]
+    best_model = model_file.split('.')[0]
     result_folder = data_dir.split("/")[-2]
     try:
         os.mkdir(f'results/{result_folder}')
@@ -142,7 +142,7 @@ def save_lengths(data_dir, fnames, lengths, best_model_file):
         pass
     lens_df.to_csv('results/{}/tour_lengths_{}.csv'.format(result_folder, best_model))
 
-def save_approx_ratios(data_dir, fnames, approx_ratios, best_model_file):
+def save_approx_ratios(data_dir, fnames, approx_ratios, model_file):
     lens_df = pd.DataFrame()
     idx = 0
     print("Saving approximation ratios...")
@@ -153,7 +153,7 @@ def save_approx_ratios(data_dir, fnames, approx_ratios, best_model_file):
         tmp_df[fname] = [approx_ratios[idx]]
         lens_df = pd.concat([lens_df,tmp_df], ignore_index=False, axis=1)
         idx += 1
-    best_model = best_model_file.split('.')[0]
+    best_model = model_file.split('.')[0]
     result_folder = data_dir.split("/")[-2]
     try:
         os.mkdir(f'results/{result_folder}')
@@ -196,35 +196,42 @@ def prepare_testset_S2VDQN(folder, scale_factor=0.000001):
     # print("Number of loaded test graphs:",len(graph_list))
     return graph_list, fnames
 
-def get_data_from_result_files(data_dir, result_dir):
+def get_data_from_result_files(data_dir, result_dir, model_name):
+    approx = False
     for f in os.listdir(result_dir):
+        if not model_name in f:
+            continue
         if 'solution' in f:
             sol_df = pd.read_csv(result_dir + f, index_col=0)
         elif 'tour' in f:
             len_df = pd.read_csv(result_dir + f, index_col=0)
         elif 'approx' in f:
             approx_df = pd.read_csv(result_dir + f, index_col=0)
+            approx = True
     try:
-        approx_ratios = list(approx_df.iloc[0])
-        fnames = [fname+'.tsp' for fname in len_df.columns if not '.tsp' in fname]
+        if approx:
+            approx_ratios = list(approx_df.iloc[0])
+        fnames = [fname+'.tsp' if not '.tsp' in fname else fname for fname in len_df.columns ]
         test_lengths = list(len_df.iloc[0])
-        
     except:
         print("Generating approx ratios")
-        fnames = [fname+'.tsp' for fname in len_df.columns if not '.tsp' in fname]
+        fnames = [fname+'.tsp' if not '.tsp' in fname else fname for fname in len_df.columns ]
         test_lengths = list(len_df.iloc[0])
-        approx_ratios, mean_approx_ratio = get_approx_ratios(data_dir, fnames=fnames, test_lengths=test_lengths)
+        if approx:
+            approx_ratios, mean_approx_ratio = get_approx_ratios(data_dir, fnames=fnames, test_lengths=test_lengths)
+    if not approx:
+        approx_ratios = np.nan
     solutions = []
     for column in sol_df.columns:
-            raw_list = list(sol_df[column])
-            processed_list = [int(k) for k in raw_list if not np.isnan(k)]
-            solutions.append(processed_list)
+        raw_list = list(sol_df[column])
+        processed_list = [int(k) for k in raw_list if not np.isnan(k)]
+        solutions.append(processed_list)
     return fnames, approx_ratios, test_lengths, solutions
 
 def get_model_file(model_path):
-
+    k = 0
     for f in os.listdir(model_path):
-        if ('ckpt' not in f):# or (nrange_str not in f):
+        if not 'ckpt' in f:# or (nrange_str not in f):
             continue
         # print(f)
         f_len = f.split('_')[-1].split('.')[0]
@@ -232,8 +239,82 @@ def get_model_file(model_path):
         if f_len[0] != '1':
             continue
             # norm_tour_length = tour_length/float(config['valid_sol'])
+        
         else:
+            k += 1
             model_file = '.'.join(f.split('.')[0:-1])
             model_base_path = model_path
-    print("Best model file:", model_file)
+    if k > 0:
+        print("Best model file:", model_file)
+    else:
+        print("Could not find any checkpoint file in the specified folder!")
     return model_file, model_base_path, tour_length
+
+def prepare_real_samples(data_dir):
+    if not data_dir[-1] == '/':
+        data_dir = data_dir + '/'
+    prepared_graphs = []
+    raw_graphs = []
+    fnames = []
+    for fname in os.listdir(data_dir):
+        if not '.tsp' in fname:
+            continue
+        try:
+            problem = tsplib95.load(data_dir + fname)
+            g = problem.get_graph()
+        except:
+            print('Error loading tsp file!')
+            continue
+        #try:
+        # remove edges from nodes to itself
+        ebunch=[(k,k) for k in g.nodes()]
+        g.remove_edges_from(ebunch)
+        # mapping
+        mapping = {k:i for i,k in enumerate(g.nodes)}
+        g = nx.relabel_nodes(g, mapping)
+        # save raw graph
+        raw_graphs.append(g.copy())
+        # make sure every coordinate is positive
+        min_x = np.inf
+        max_x = -np.inf
+        min_y = np.inf
+        max_y = -np.inf
+        for node in g.nodes:
+            x = g.nodes[node]['coord'][0]
+            y = g.nodes[node]['coord'][1]
+            if x > max_x:
+                max_x = x
+            if x < min_x:
+                min_x = x
+            if y > max_y:
+                max_y = y
+            if y < min_y:
+                min_y = y
+        if min_x <= 0:
+            x_offset = -min_x + 1
+        else:
+            x_offset = 0
+        if min_y <= 0:
+            y_offset = -min_y + 1
+        else:
+            y_offset = 0
+        # change node positions into 0,1 square
+        for node in g.nodes():
+            g.nodes[node]['coord'] = np.array(g.nodes[node]['coord'])
+            g.nodes[node]['coord'][0] += x_offset
+            g.nodes[node]['coord'][1] += y_offset
+            if max_x > max_y:
+                scale_factor = 1 / (1.05 * max_x)
+            else:
+                scale_factor = 1 / (1.05 * max_y)
+            g.nodes[node]['coord'] = np.array(g.nodes[node]['coord']) * scale_factor
+        for edge in g.edges:
+            g.edges[edge]['weight'] = g.edges[edge]['weight'] * scale_factor
+        #except:
+        #    g = nx.Graph()
+        #    print("Error altering graph!")
+        #    continue
+        prepared_graphs.append(g)
+        
+        fnames.append(fname)
+    return raw_graphs, prepared_graphs, fnames
