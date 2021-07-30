@@ -1,9 +1,13 @@
+train_configs/**
+
 models/**
 
 best_models/**
 !best_models/.gitkeep
+
 plots/*
 !plots/.gitkeep
+
 test_sets
 valid_sets
 data/*
