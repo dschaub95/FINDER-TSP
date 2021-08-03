@@ -32,6 +32,8 @@ import mvc_env
 import utils
 import tsplib95
 
+np.set_printoptions(threshold=sys.maxsize)
+
 cdef double inf = 1073741823.5
 
 class FINDER:
@@ -112,6 +114,8 @@ class FINDER:
                 print("Error when loading key '{}' from external config file!".format(key))
                 print("Using default value {} instead!".format(self.cfg[key]))
 
+        self.print_params = True
+
         # explicitly define some variables for speed up
         cdef int MEMORY_SIZE = self.cfg['MEMORY_SIZE']
         cdef int NUM_MAX = self.cfg['NUM_MAX']
@@ -164,7 +168,9 @@ class FINDER:
         # [node_cnt, edge_cnt]
         self.e2nsum_param = tf.sparse_placeholder(tf.float32, name="e2nsum_param")
         # [edge_cnt, node_cnt]
-        self.n2esum_param = tf.sparse_placeholder(tf.float32, name="n2esum_param")
+        self.n2esum_param_0 = tf.sparse_placeholder(tf.float32, name="n2esum_param_0")
+        # [edge_cnt, node_cnt]
+        self.n2esum_param_1 = tf.sparse_placeholder(tf.float32, name="n2esum_param_1")
 
         # [batch_size, node_cnt]
         self.start_param = tf.sparse_placeholder(tf.float32, name="start_param")
@@ -172,7 +178,11 @@ class FINDER:
         self.end_param = tf.sparse_placeholder(tf.float32, name="end_param")
         # [batch_size, node_cnt]
         self.state_sum_param = tf.sparse_placeholder(tf.float32, name="state_sum_param")
-
+        # [max_nodes*batch_size, node_cnt]
+        self.state_param = tf.sparse_placeholder(tf.float32, name="state_param")
+        # [node_cnt, node_cnt]
+        self.mask_param = tf.sparse_placeholder(tf.float32, name="mask_param")
+        
         # [node_cnt, node_cnt]
         self.laplacian_param = tf.sparse_placeholder(tf.float32, name="laplacian_param")
         # [batch_size, node_cnt]
@@ -204,13 +214,14 @@ class FINDER:
             self.lossT, self.trainStepT, self.q_predT, self.q_on_allT, self.Q_param_listT = self.Build_S2VDQN()
         else:
             # init Q network
-            self.loss, self.trainStep, self.q_pred, self.q_on_all, self.Q_param_list = self.BuildNet() #[loss,trainStep,q_pred, q_on_all, ...]
+            self.loss, self.trainStep, self.q_pred, self.q_on_all, self.Q_param_list, self.tensor_list = self.BuildNet() #[loss,trainStep,q_pred, q_on_all, ...]
             #init Target Q Network
-            self.lossT, self.trainStepT, self.q_predT, self.q_on_allT, self.Q_param_listT = self.BuildNet()
+            self.lossT, self.trainStepT, self.q_predT, self.q_on_allT, self.Q_param_listT, self.tensor_list = self.BuildNet()
 
         #takesnapsnot
         self.copyTargetQNetworkOperation = [a.assign(b) for a,b in zip(self.Q_param_listT, self.Q_param_list)]
 
+        print(self.Q_param_list)
 
         self.UpdateTargetQNetwork = tf.group(*self.copyTargetQNetworkOperation)
         # saving and loading networks
@@ -230,94 +241,6 @@ class FINDER:
 
 ################################################# New code for FINDER #################################################
 ###################################################### BuildNet start ######################################################    
-    '''    
-    def Build_ChangjunNet(self):
-        # some definitions for convenience
-        cdef int node_init_dim = self.cfg['node_init_dim']
-        cdef int edge_init_dim = self.cfg['edge_init_dim']
-        cdef int state_init_dim = self.cfg['state_init_dim']
-        
-        cdef int node_embed_dim = self.cfg['node_embed_dim']
-        cdef int edge_embed_dim = self.cfg['edge_embed_dim']
-        cdef double initialization_stddev = self.cfg['initialization_stddev']
-        
-        # [node_cnt, node_init_dim] * [node_init_dim, node_embed_dim] = [node_cnt, node_embed_dim], not sparse
-        node_init = tf.matmul(tf.cast(self.node_input, tf.float32), w_n2l)
-        cur_node_embed = tf.nn.relu(node_init)
-        cur_node_embed = tf.nn.l2_normalize(cur_node_embed, axis=1)
-        
-        # [batch_size, node_init_dim]
-        state_size = tf.shape(self.subgsum_param)[0]
-        state_input = tf.ones((state_size, state_init_dim))
-        # [batch_size, node_init_dim] * [node_init_dim, node_embed_dim] = [batch_size, node_embed_dim]
-        cur_state_embed = tf.matmul(tf.cast(state_input, tf.float32), w_s2l)
-        cur_state_embed = tf.nn.relu(cur_state_embed)
-        cur_state_embed = tf.nn.l2_normalize(cur_state_embed, axis=1)
-
-        # [edge_cnt, edge_dim] * [edge_dim, embed_dim] = [edge_cnt, embed_dim]
-        edge_init = tf.matmul(tf.cast(self.edge_input, tf.float32), w_e2l)
-        cur_edge_embed = tf.nn.relu(edge_init)
-        cur_edge_embed = tf.nn.l2_normalize(cur_edge_embed, axis=1)
-        ################### GNN start ###################
-        cdef int lv = 0
-        cdef int max_bp_iter = self.cfg['max_bp_iter']
-        while lv < max_bp_iter:
-            lv = lv + 1
-            cur_node_embed_prev = cur_node_embed
-            ###################### update edges ####################################
-            # [node_cnt, embed_dim] * [embed_dim, embed_dim] = [node_cnt, embed_dim]
-            msg_linear_node = tf.matmul(cur_node_embed, p_node_conv1)
-            
-            # [edge_cnt, node_cnt] * [node_cnt, embed_dim] = [edge_cnt, embed_dim]
-            n2e = tf.sparse.sparse_dense_matmul(tf.cast(self.n2esum_param, tf.float32), msg_linear_node)          
-            
-            # n2e_linear = tf.concat([tf.matmul(n2e, trans_edge_1), tf.matmul(edge_init, trans_edge_2)], axis=1)    #we used
-
-            # [[edge_cnt, embed_dim] * [edge_embed_dim, edge_embed_dim], [edge_cnt, embed_dim] * [edge_embed_dim, edge_embed_dim]] = [edge_cnt, 2*edge_embed_dim]
-            n2e_linear = tf.concat([tf.matmul(n2e, trans_edge_1), tf.matmul(cur_edge_embed, trans_edge_2)], axis=1)    #we used
-            
-            # [edge_cnt, 2*edge_embed_dim] * [2*edge_embed_dim, edge_embed_dim] = [edge_cnt, edge_embed_dim]
-            cur_edge_embed = tf.matmul(n2e_linear, trans_edge_3)
-            cur_edge_embed = tf.nn.relu(cur_edge_embed)
-            cur_edge_embed = tf.nn.l2_normalize(cur_edge_embed, axis=1)
-            
-            ###################### update nodes ####################################
-            # [node_cnt, edge_cnt] * [edge_cnt, edge_embed_dim] = [node_cnt, edge_embed_dim]
-            e2n = tf.sparse.sparse_dense_matmul(tf.cast(self.e2nsum_param, tf.float32), cur_edge_embed)
-            
-            # [[node_cnt, edge_embed_dim] * [edge_embed_dim, node_embed_dim] [node_cnt, node_embed_dim] * [node_embed_dim, node_embed_dim]] 
-            # = [node_cnt, 2*node_embed_dim]
-            node_linear = tf.concat([tf.matmul(e2n, trans_node_1, name='matmul_1'), tf.matmul(cur_node_embed, trans_node_2, name='matmul_2')], axis=1)    #we used
-            
-            # [node_cnt, embed_dim]
-            cur_node_embed = tf.nn.relu(node_linear)
-            cur_node_embed = tf.nn.l2_normalize(cur_node_embed, axis=1)
-            # [node_cnt, 3*node_embed_dim] * [3*node_embed_dim, node_embed_dim] = [node_cnt, embed_dim]
-            cur_node_embed = tf.matmul(tf.concat([cur_node_embed, cur_node_embed_prev], axis=1), w_l)
-
-            ##### state calculation start #####
-            # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
-            state_pool = tf.sparse.sparse_dense_matmul(tf.cast(self.subgsum_param, tf.float32), cur_node_embed_prev)
-            
-            # [batch_size, node_embed_dim] * [node_embed_dim, node_embed_dim] = [batch_size, node_embed_dim], dense
-            state_linear = tf.matmul(state_pool, p_state_conv1)
-            state_linear = tf.nn.relu(state_linear)
-
-            # [batch_size, node_embed_dim] * [node_embed_dim, node_embed_dim] = [batch_size, node_embed_dim], dense
-            cur_state_embed_linear = tf.matmul(cur_state_embed, p_state_conv2)
-            cur_state_embed_linear = tf.nn.relu(cur_state_embed_linear)
-            
-            # [[batch_size, node_embed_dim] [batch_size, node_embed_dim]] = [batch_size, 2*node_embed_dim], return tensed matrix
-            state_merged_linear = tf.concat([state_linear, cur_state_embed_linear], axis=1)
-            
-            # [batch_size, 2(3)*node_embed_dim]*[2(3)*node_embed_dim, node_embed_dim] = [batch_size, node_embed_dim]
-            cur_state_embed = tf.matmul(state_merged_linear, p_state_conv3)
-            cur_state_embed = tf.nn.relu(cur_state_embed)
-            cur_state_embed = tf.nn.l2_normalize(cur_state_embed, axis=1)  
-            ##### state calculation end #####
-        pass
-    '''
-
     
     def BuildNet(self):
         """
@@ -490,7 +413,7 @@ class FINDER:
                 msg_linear_node = tf.matmul(cur_node_embed, p_node_conv1)
                 
                 # [edge_cnt, node_cnt] * [node_cnt, embed_dim] = [edge_cnt, embed_dim]
-                n2e = tf.sparse.sparse_dense_matmul(tf.cast(self.n2esum_param, tf.float32), msg_linear_node)
+                n2e = tf.sparse.sparse_dense_matmul(tf.cast(self.n2esum_param_0, tf.float32), msg_linear_node)
                 
                 # [edge_cnt, embed_dim] + [edge_cnt, embed_dim] = [edge_cnt, embed_dim]
                 # n2e_linear = tf.add(n2e, edge_init)
@@ -618,11 +541,28 @@ class FINDER:
         elif self.cfg['state_representation'] == 2:
             
             # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
-            cur_state_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.state_sum_param, tf.float32), cur_node_embed)
-            # [batch_size, node_embed_dim] * [node_embed_dim, node_embed_dim] = [batch_size, node_embed_dim], dense
-            cur_state_embed = tf.matmul(cur_state_embed, p_state_conv1)
-            cur_state_embed = tf.nn.relu(cur_state_embed)
-            cur_state_embed = tf.nn.l2_normalize(cur_state_embed, axis=1)  
+            covered_embed_padded = tf.sparse.sparse_dense_matmul(tf.cast(self.state_param, tf.float32), cur_node_embed)
+            covered_embed_padded_shape = tf.shape(covered_embed_padded)
+            covered_embed_padded_reshaped = tf.reshape(covered_embed_padded, [num_samples, -1, node_embed_dim])
+            covered_embed_padded_reshaped_shape = tf.shape(covered_embed_padded_reshaped)
+            masked_covered_embed = tf.keras.layers.Masking(mask_value=0.)(covered_embed_padded_reshaped)
+            
+            RNN_cell = tf.keras.layers.LSTMCell(units=64)
+            RNN_layer = tf.keras.layers.RNN(cell=RNN_cell, return_state=True, return_sequences=True)
+            
+            whole_seq_output, final_memory_state, final_carry_state = RNN_layer(masked_covered_embed)
+            cur_state_embed = final_carry_state
+            
+            # RNN_layer = tf.keras.layers.Bidirectional(tf.keras.layers.RNN(cell=RNN_cell))
+            # concat_weight = tf.Variable(tf.truncated_normal([2*64, 64], stddev=initialization_stddev), tf.float32)
+            
+            # output = RNN_layer(masked_covered_embed)
+            # cur_state_embed = tf.concat([output, output], axis=1)
+            # cur_state_embed = output
+            # cur_state_embed = tf.matmul(cur_state_embed, concat_weight)
+            # cur_state_embed = tf.nn.relu(cur_state_embed)
+            
+            # cur_state_embed = tf.nn.l2_normalize(cur_state_embed, axis=1)  
         
 
         if self.cfg['focus_start_end_node'] == 1:
@@ -741,7 +681,7 @@ class FINDER:
             # embed_s_a_all = tf.concat([embed_state_a_all, embed_start_a_all, embed_end_a_all], axis=1)
 
         elif self.cfg['decoder'] == 1:
-            # [batch_size, 2*node_embed_dim]
+            # [node_cnt, 2*node_embed_dim]
             if self.cfg['focus_start_end_node'] == 1:
                 embed_s_a_all = tf.concat([cur_node_embed, rep_state, rep_start, rep_end], axis=1)
             else:
@@ -749,6 +689,10 @@ class FINDER:
 
         # [node_cnt, 1(2) * node_embed_dim]
         last_output = embed_s_a_all
+        
+        # mask here all nodes that cannot be selected
+        # last_output = tf.sparse.sparse_dense_matmul(tf.cast(self.mask_param, tf.float32), last_output)
+        # last_output = tf.keras.layers.Masking(mask_value=0.)(last_output)
         
         if self.cfg['REG_HIDDEN'] > 0:
             # [node_cnt, (2)node_embed_dim] * [(2)node_embed_dim, reg_hidden] = [node_cnt, reg_hidden], dense
@@ -760,7 +704,7 @@ class FINDER:
         # [node_cnt, reg_hidden] * [reg_hidden, 1] = [node_cnt，1]
         q_on_all = tf.matmul(last_output, last_w)
 
-        return loss, trainStep, q_pred, q_on_all, tf.trainable_variables()
+        return loss, trainStep, q_pred, q_on_all, tf.trainable_variables(), [covered_embed_padded, masked_covered_embed, cur_state_embed, num_samples, covered_embed_padded_shape, covered_embed_padded_reshaped_shape]
 ###################################################### BuildNet end ######################################################
     
     def Train(self):
@@ -855,16 +799,13 @@ class FINDER:
         while (not self.test_env.isTerminal()):
             # print("Current sol:", sol)
             # print("Num orig nodes:", g_list[0].num_nodes)
-            if gid == 0:
-                list_pred = self.PredictWithCurrentQNet(g_list, [self.test_env.action_list], print_=True)
-            else:
-                list_pred = self.PredictWithCurrentQNet(g_list, [self.test_env.action_list])
-            
+            list_pred = self.PredictWithCurrentQNet(g_list, [self.test_env.action_list])         
             new_action = self.argMax(list_pred[0])
             if gid == 0:
                 print("list_pred:", list_pred)
                 print("new action:", new_action)
             self.test_env.stepWithoutReward(new_action)
+            self.print_params = False
             # sol.append(new_action)
         sol = self.test_env.action_list
         if gid == 0:
@@ -961,11 +902,14 @@ class FINDER:
             self.inputs['e2nsum_param'] = prepareBatchGraph.e2nsum_param
         elif embeddingMethod == 3:
             self.inputs['e2nsum_param'] = prepareBatchGraph.e2nsum_param
-            self.inputs['n2esum_param'] = prepareBatchGraph.n2esum_param
+            self.inputs['n2esum_param_0'] = prepareBatchGraph.n2esum_param_0
+            self.inputs['n2esum_param_1'] = prepareBatchGraph.n2esum_param_1
         # print("n2nsum_param:", self.inputs['n2nsum_param'])
         self.inputs['start_param'] = prepareBatchGraph.start_param
         self.inputs['end_param'] = prepareBatchGraph.end_param
         self.inputs['state_sum_param'] = prepareBatchGraph.state_sum_param
+        self.inputs['state_param'] = prepareBatchGraph.state_param
+        self.inputs['mask_param'] = prepareBatchGraph.mask_param
         
         self.inputs['laplacian_param'] = prepareBatchGraph.laplacian_param
         self.inputs['subgsum_param'] = prepareBatchGraph.subgsum_param
@@ -997,10 +941,13 @@ class FINDER:
             self.inputs['e2nsum_param'] = prepareBatchGraph.e2nsum_param
         elif embeddingMethod == 3:
             self.inputs['e2nsum_param'] = prepareBatchGraph.e2nsum_param
-            self.inputs['n2esum_param'] = prepareBatchGraph.n2esum_param
+            self.inputs['n2esum_param_0'] = prepareBatchGraph.n2esum_param_0
+            self.inputs['n2esum_param_1'] = prepareBatchGraph.n2esum_param_1
         self.inputs['start_param'] = prepareBatchGraph.start_param
         self.inputs['end_param'] = prepareBatchGraph.end_param
         self.inputs['state_sum_param'] = prepareBatchGraph.state_sum_param
+        self.inputs['state_param'] = prepareBatchGraph.state_param
+        self.inputs['mask_param'] = prepareBatchGraph.mask_param
         # print("e2n matrix:", print(type(self.inputs['e2nsum_param'])))
         # print("n2nsum_param:", self.inputs['n2nsum_param'])
         self.inputs['subgsum_param'] = prepareBatchGraph.subgsum_param
@@ -1015,7 +962,7 @@ class FINDER:
         return prepareBatchGraph.idx_map_list
 
 
-    def Predict(self, g_list, covered, isSnapShot, print_=False):
+    def Predict(self, g_list, covered, isSnapShot):
         # print("Running Predict")
         cdef int n_graphs = len(g_list)
         cdef int i, j, k, bsize
@@ -1040,29 +987,47 @@ class FINDER:
                 my_dict[self.e2nsum_param] = self.inputs['e2nsum_param']
             elif self.cfg['embeddingMethod'] == 3:
                 my_dict[self.e2nsum_param] = self.inputs['e2nsum_param']
-                my_dict[self.n2esum_param] = self.inputs['n2esum_param']
+                my_dict[self.n2esum_param_0] = self.inputs['n2esum_param_0']
+                my_dict[self.n2esum_param_1] = self.inputs['n2esum_param_1']
             
             my_dict[self.start_param] = self.inputs['start_param']
             my_dict[self.end_param] = self.inputs['end_param']
             my_dict[self.state_sum_param] = self.inputs['state_sum_param']
+            my_dict[self.state_param] = self.inputs['state_param']
+            my_dict[self.mask_param] = self.inputs['mask_param']
             
             my_dict[self.node_input] = np.array(self.inputs['node_input'])
             my_dict[self.edge_input] = np.array(self.inputs['edge_input'])
             my_dict[self.edge_sum] = np.array(self.inputs['edge_sum']).reshape((-1, self.cfg['edge_init_dim']))
-            if print_ == True:
-                print("start_param:", my_dict[self.start_param])
-                print("end_param:", my_dict[self.end_param])
-                if self.cfg['embeddingMethod'] in [2, 3]:
-                    print("e2nsum_param:", my_dict[self.e2nsum_param])
-                print("edge_input", my_dict[self.edge_input])
+            if self.print_params:
+                # print("start_param:", my_dict[self.start_param])
+                # print("end_param:", my_dict[self.end_param])
+                # if self.cfg['embeddingMethod'] in [2, 3]:
+                #     print("e2nsum_param:", my_dict[self.e2nsum_param])
+                # print("edge_input", my_dict[self.edge_input])
+                # print("state_param:", my_dict[self.state_param])
+                pass
+            
             if isSnapShot:
-                result = self.session.run([self.q_on_allT], feed_dict = my_dict)
+                result = self.session.run([self.q_on_allT, self.tensor_list], feed_dict = my_dict)
                 # print("sucessfully ran training session")
             else:
-                result = self.session.run([self.q_on_all], feed_dict = my_dict)
+                result = self.session.run([self.q_on_all, self.tensor_list], feed_dict = my_dict)
                 # print("sucessfully ran training session")
             raw_output = result[0]
             # set Q values for all nodes that have already been chosen to negative inf
+            if self.print_params:
+                # print("covered embed padded:", np.array(result[1][0]))
+                # print("masked_embed:", np.array(result[1][1]))
+                # print("state_embed:", np.array(result[1][2]))
+                # print("num_samples:", np.array(result[1][3]))
+                # print("shape covered embed:", np.array(result[1][4]))
+                # print("shape covered reshaped embed:", np.array(result[1][5]))
+                # print("num nodes", [g.num_nodes for g in g_list])
+                # print("num covered nodes:", [len(cover) for cover in covered])
+                pass
+            self.print_params = True
+            # print(np.array(tensor_list[0]))
             pos = 0
             pred = []
             for j in range(i, i + bsize):
@@ -1078,17 +1043,16 @@ class FINDER:
                     cur_pred[k] = -inf
                 pred.append(cur_pred)
             assert (pos == len(raw_output))
-
         return pred
 
-    def PredictWithCurrentQNet(self, g_list, covered, print_=False):
+    def PredictWithCurrentQNet(self, g_list, covered):
         # print("predicting with current QNet...")
-        result = self.Predict(g_list, covered, isSnapShot=False, print_=print_)
+        result = self.Predict(g_list, covered, isSnapShot=False)
         return result
 
-    def PredictWithSnapshot(self, g_list, covered, print_=False):
+    def PredictWithSnapshot(self, g_list, covered):
         # print("predicting with snapshot...")
-        result = self.Predict(g_list, covered, isSnapShot=True, print_=print_)
+        result = self.Predict(g_list, covered, isSnapShot=True)
         return result
     #pass
     def TakeSnapShot(self):
@@ -1184,11 +1148,14 @@ class FINDER:
                 my_dict[self.e2nsum_param] = self.inputs['e2nsum_param']
             elif self.cfg['embeddingMethod'] == 3:
                 my_dict[self.e2nsum_param] = self.inputs['e2nsum_param']
-                my_dict[self.n2esum_param] = self.inputs['n2esum_param']
-            
+                my_dict[self.n2esum_param_0] = self.inputs['n2esum_param_0']
+                my_dict[self.n2esum_param_1] = self.inputs['n2esum_param_1']
+
             my_dict[self.start_param] = self.inputs['start_param']
             my_dict[self.end_param] = self.inputs['end_param']
             my_dict[self.state_sum_param] = self.inputs['state_sum_param']
+            my_dict[self.state_param] = self.inputs['state_param']
+            my_dict[self.mask_param] = self.inputs['mask_param']
 
             my_dict[self.node_input] = np.array(self.inputs['node_input'])
             my_dict[self.edge_input] = np.array(self.inputs['edge_input'])
@@ -1196,10 +1163,12 @@ class FINDER:
             my_dict[self.target] = self.inputs['target']
             
             print("running training session...")
-            result = self.session.run([self.loss, self.trainStep], feed_dict=my_dict)
+            # result = self.session.run([self.loss, self.trainStep], feed_dict=my_dict)
+            result = self.session.run([self.trainStep], feed_dict=my_dict)
             print("sucessfully ran training session")
-            loss += result[0]*bsize
-        return loss / len(g_list)
+            # loss += result[0]*bsize
+            # return loss / len(g_list)
+        return 1
     
     def GetSol(self, int gid, int step=1):
         cdef int help_func = self.cfg['help_func']
@@ -1519,7 +1488,7 @@ class FINDER:
             lv = lv + 1
             
             msg_linear = tf.matmul(cur_node_embed, p_node_conv1)
-            n2e_linear = tf.sparse.sparse_dense_matmul(tf.cast(self.n2esum_param, tf.float32), msg_linear)
+            n2e_linear = tf.sparse.sparse_dense_matmul(tf.cast(self.n2esum_param_0, tf.float32), msg_linear)
             edge_rep = tf.math.add(n2e_linear, edge_init)
             edge_rep = tf.nn.relu(edge_rep)
             e2n = tf.sparse.sparse_dense_matmul(tf.cast(self.e2nsum_param, tf.float32), edge_rep)
@@ -1597,11 +1566,14 @@ class FINDER:
                 my_dict[self.e2nsum_param] = self.inputs['e2nsum_param']
             elif self.cfg['embeddingMethod'] == 3:
                 my_dict[self.e2nsum_param] = self.inputs['e2nsum_param']
-                my_dict[self.n2esum_param] = self.inputs['n2esum_param']
+                my_dict[self.n2esum_param_0] = self.inputs['n2esum_param_0']
+                my_dict[self.n2esum_param_1] = self.inputs['n2esum_param_1']
             
             my_dict[self.start_param] = self.inputs['start_param']
             my_dict[self.end_param] = self.inputs['end_param']
             my_dict[self.state_sum_param] = self.inputs['state_sum_param']
+            my_dict[self.state_param] = self.inputs['state_param']
+            my_dict[self.mask_param] = self.inputs['mask_param']
 
             my_dict[self.node_input] = np.array(self.inputs['node_input'])
             my_dict[self.edge_input] = np.array(self.inputs['edge_input'])

@@ -44,12 +44,15 @@ public:
     std::shared_ptr<sparseMatrix> rep_global;
     std::shared_ptr<sparseMatrix> n2nsum_param;
     std::shared_ptr<sparseMatrix> e2nsum_param;
-    std::shared_ptr<sparseMatrix> n2esum_param;
+    std::shared_ptr<sparseMatrix> n2esum_param_0;
+    std::shared_ptr<sparseMatrix> n2esum_param_1;
     std::shared_ptr<sparseMatrix> laplacian_param;
     std::shared_ptr<sparseMatrix> subgsum_param;
     std::shared_ptr<sparseMatrix> start_param;
     std::shared_ptr<sparseMatrix> end_param;
     std::shared_ptr<sparseMatrix> state_sum_param;
+    std::shared_ptr<sparseMatrix> state_param;
+    std::shared_ptr<sparseMatrix> mask_param;
 
     std::vector< std::vector< int > > idx_map_list;
     std::vector< std::pair< int,int > > subgraph_id_span;
@@ -79,7 +82,7 @@ std::shared_ptr<sparseMatrix> subg_construct(GraphStruct* graph, std::vector<std
 
 std::shared_ptr<sparseMatrix> e2n_construct(GraphStruct* graph, int aggregatorID);
 
-std::shared_ptr<sparseMatrix> n2e_construct(GraphStruct* graph);
+std::vector< std::shared_ptr<sparseMatrix> > n2e_construct(GraphStruct* graph);
 
 std::shared_ptr<sparseMatrix> e2e_construct(GraphStruct* graph);
 
