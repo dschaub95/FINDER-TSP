@@ -34,11 +34,14 @@ import tsplib95
 
 np.set_printoptions(threshold=sys.maxsize)
 
+
 cdef double inf = 1073741823.5
 
 class FINDER:
     
     def __init__(self, config_path):
+        # fix seed fo graph generation
+        np.random.seed(42)
         # read input config
         config = utils.read_config(config_path)
         # initialize FINDER config with default values
@@ -59,6 +62,7 @@ class FINDER:
         self.cfg['selected_nodes_inclusion'] = 2
         self.cfg['focus_start_end_node'] = 1
         self.cfg['state_representation'] = 0
+        
         # general training hyperparameters
         self.cfg['IsHuberloss'] = 0
         self.cfg['BATCH_SIZE'] = 64
@@ -68,6 +72,7 @@ class FINDER:
         self.cfg['Alpha'] = 0.001
         self.cfg['save_interval'] = 300
         self.cfg['num_env'] = 1
+        self.cfg['dropout_rate'] = 0.99
 
         # training set specifications
         self.cfg['g_type'] = 'tsp_2d'
@@ -212,6 +217,22 @@ class FINDER:
             self.loss, self.trainStep, self.q_pred, self.q_on_all, self.Q_param_list = self.Build_S2VDQN() #[loss,trainStep,q_pred, q_on_all, ...]
             #init Target Q Network
             self.lossT, self.trainStepT, self.q_predT, self.q_on_allT, self.Q_param_listT = self.Build_S2VDQN()
+        if self.cfg['net_type'] == 'AGNN':
+            assert(self.cfg['REG_HIDDEN'] > 0)
+            self.cfg['embeddingMethod'] = 3 # makes sure all relevant aggregation matrices are calculated
+            # # init Q network
+            # self.loss, self.trainStep, self.q_pred, self.q_on_all, self.Q_param_list = self.BuildAGNN()
+            # #init Target Q Network
+            # self.lossT, self.trainStepT, self.q_predT, self.q_on_allT, self.Q_param_listT = self.BuildAGNN()
+            self.node_embed, self.edge_embed = self.BuildAGNN_encoder()
+            
+            self.state_embed = self.BuildAGNN_state_encoder(self.node_embed)
+            self.q_values = self.BuildAGNN_decoder
+            # init Q network
+            self.loss, self.trainStep, self.q_pred, self.q_on_all, self.Q_param_list = self.BuildAGNN_test() #[loss,trainStep,q_pred, q_on_all, ...]
+            #init Target Q Network
+            self.lossT, self.trainStepT, self.q_predT, self.q_on_allT, self.Q_param_listT = self.BuildAGNN_test()
+
         else:
             # init Q network
             self.loss, self.trainStep, self.q_pred, self.q_on_all, self.Q_param_list, self.tensor_list = self.BuildNet() #[loss,trainStep,q_pred, q_on_all, ...]
@@ -220,7 +241,6 @@ class FINDER:
 
         #takesnapsnot
         self.copyTargetQNetworkOperation = [a.assign(b) for a,b in zip(self.Q_param_listT, self.Q_param_list)]
-
         print(self.Q_param_list)
 
         self.UpdateTargetQNetwork = tf.group(*self.copyTargetQNetworkOperation)
@@ -241,7 +261,287 @@ class FINDER:
 
 ################################################# New code for FINDER #################################################
 ###################################################### BuildNet start ######################################################    
+    def BuildAGNN_encoder(self):
+        # some definitions for convenience
+        cdef int node_init_dim = self.cfg['node_init_dim']
+        cdef int edge_init_dim = self.cfg['edge_init_dim']
+        cdef int state_init_dim = self.cfg['state_init_dim']
+        
+        cdef int node_embed_dim = self.cfg['node_embed_dim']
+        cdef int edge_embed_dim = self.cfg['edge_embed_dim']
+        cdef double initialization_stddev = self.cfg['initialization_stddev']
+
+        cdef int max_bp_iter = self.cfg['max_bp_iter']
+        assert(node_embed_dim == edge_embed_dim)
+        # [node_init_dim, node_embed_dim]
+        w_n2l = tf.Variable(tf.truncated_normal([node_init_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
+
+        # [node_init_dim, node_embed_dim], state input embedding matrix
+        w_s2l = tf.Variable(tf.truncated_normal([state_init_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
+
+        # [edge_init_dim, edge_embed_dim]
+        w_e2l = tf.Variable(tf.truncated_normal([edge_init_dim, edge_embed_dim], stddev=initialization_stddev), tf.float32)
+
+        U = [tf.Variable(tf.truncated_normal([node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32) for i in range(max_bp_iter)]
+        V = [tf.Variable(tf.truncated_normal([node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32) for i in range(max_bp_iter)]
+        A = [tf.Variable(tf.truncated_normal([node_embed_dim, edge_embed_dim], stddev=initialization_stddev), tf.float32) for i in range(max_bp_iter)]
+        B = [tf.Variable(tf.truncated_normal([node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32) for i in range(max_bp_iter)]
+        C = [tf.Variable(tf.truncated_normal([node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32) for i in range(max_bp_iter)]
+        
+        # [node_cnt, node_init_dim] * [node_init_dim, node_embed_dim] = [node_cnt, node_embed_dim], not sparse
+        node_init = tf.matmul(tf.cast(self.node_input, tf.float32), w_n2l)
+        cur_node_embed = node_init
+        
+        # [batch_size, node_init_dim]
+        num_samples = tf.shape(self.subgsum_param)[0]
+        state_input = tf.ones((num_samples, state_init_dim))
+        # [batch_size, node_init_dim] * [node_init_dim, node_embed_dim] = [batch_size, node_embed_dim]
+        state_init = tf.matmul(tf.cast(state_input, tf.float32), w_s2l)
+        cur_state_embed = state_init
+        
+        # [edge_cnt, edge_dim] * [edge_dim, embed_dim] = [edge_cnt, embed_dim]
+        edge_init = tf.matmul(tf.cast(self.edge_input, tf.float32), w_e2l)
+        cur_edge_embed = edge_init
+
+        ################### GNN start ###################
+        cdef int lv = 0
+        while lv < max_bp_iter:
+            cur_node_embed_prev = tf.identity(cur_node_embed)
+            # node embed update
+            node_linear_0 = tf.matmul(cur_node_embed, V[lv])
+            tmp_n2e = tf.sparse.sparse_dense_matmul(tf.cast(self.n2esum_param_0, tf.float32), node_linear_0)
+            
+            tmp_edge_embed = tf.math.sigmoid(cur_edge_embed)
+            mult_edge_embed = tf.math.multiply(tmp_edge_embed, tmp_n2e)
+            
+            new_node_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.e2nsum_param, tf.float32), mult_edge_embed)
+            node_linear_1 = tf.matmul(cur_node_embed, U[lv])
+            new_node_embed = tf.math.add(node_linear_1, new_node_embed)
+            
+            norm_layer_0 = tf.keras.layers.LayerNormalization()
+            new_node_embed = tf.reshape(new_node_embed, [-1, node_embed_dim])
+            new_node_embed = norm_layer_0(new_node_embed)
+            new_node_embed = tf.nn.relu(new_node_embed)
+            cur_node_embed = tf.math.add(cur_node_embed, new_node_embed)
+            drop_layer = tf.keras.layers.Dropout(self.cfg['dropout_rate'], noise_shape=None, seed=None)
+            cur_node_embed = drop_layer(cur_node_embed)
+            # edge embed update
+            tmp_node_embed_0 = tf.matmul(cur_node_embed_prev, B[lv])
+            tmp_node_embed_1 = tf.matmul(cur_node_embed_prev, C[lv])
+            
+            tmp_n2e_0 = tf.sparse.sparse_dense_matmul(tf.cast(self.n2esum_param_0, tf.float32), tmp_node_embed_0)
+            tmp_n2e_1 = tf.sparse.sparse_dense_matmul(tf.cast(self.n2esum_param_1, tf.float32), tmp_node_embed_1)
+            
+            tmp_edge_embed = tf.matmul(cur_edge_embed, A[lv])
+            
+            sum_edge_embed = tf.math.add(tmp_n2e_0, tmp_n2e_1)
+            sum_edge_embed = tf.math.add(sum_edge_embed, tmp_edge_embed)
+            
+            norm_layer_1 = tf.keras.layers.LayerNormalization()
+            new_edge_embed = tf.reshape(sum_edge_embed, [-1, edge_embed_dim])
+            new_edge_embed = norm_layer_1(new_edge_embed)
+            new_edge_embed = tf.nn.relu(new_edge_embed)
+            cur_edge_embed = tf.math.add(cur_edge_embed, new_edge_embed)
+            drop_layer = tf.keras.layers.Dropout(self.cfg['dropout_rate'], noise_shape=None, seed=None)
+            cur_edge_embed = drop_layer(cur_edge_embed)
+            lv = lv + 1
+        return cur_node_embed, cur_edge_embed
     
+    def BuildAGNN_state_encoder(self, cur_node_embed):
+        
+        # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
+        cur_state_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.state_sum_param, tf.float32), cur_node_embed)
+        cur_state_embed = tf.reshape(cur_state_embed, [-1, self.cfg['node_embed_dim']])
+        norm_layer = tf.keras.layers.LayerNormalization()
+        cur_state_embed = norm_layer(cur_state_embed)
+        drop_layer = tf.keras.layers.Dropout(self.cfg['dropout_rate'], noise_shape=None, seed=None)
+        cur_state_embed = drop_layer(cur_state_embed)
+        return cur_state_embed
+    
+    def BuildAGNN_decoder(self, action_embed, cur_state_embed, weights=None):
+        if not weights:
+            h1_weight = tf.Variable(tf.truncated_normal([2*self.cfg['node_embed_dim'], self.cfg['REG_HIDDEN']], 
+                                                        stddev=self.cfg['initialization_stddev']), tf.float32)
+            last_w = tf.Variable(tf.truncated_normal([self.cfg['REG_HIDDEN'], 1], stddev=self.cfg['initialization_stddev']), tf.float32)
+            weights = [h1_weight, last_w]
+        else:
+            h1_weight, last_w = weights
+        embed_s_a = tf.concat([action_embed, cur_state_embed], axis=1)
+        drop_layer = tf.keras.layers.Dropout(self.cfg['dropout_rate'], noise_shape=None, seed=None)
+        embed_s_a = drop_layer(embed_s_a)
+        # [batch_size, (2)node_embed_dim] * [(2)node_embed_dim, reg_hidden] = [batch_size, reg_hidden], dense
+        hidden = tf.matmul(embed_s_a, h1_weight)
+        # [batch_size, reg_hidden]
+        last_output = tf.nn.relu(hidden)
+
+         # [batch_size, reg_hidden] * [reg_hidden, 1] = [batch_size, 1]
+        q_pred = tf.matmul(last_output, last_w)
+        return q_pred, weights
+
+    def BuildAGNN_test(self):
+        cur_node_embed, cur_edge_embed = self.BuildAGNN_encoder()
+        cur_state_embed = self.BuildAGNN_state_encoder(cur_node_embed)
+
+        # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
+        action_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.action_select, tf.float32), cur_node_embed)
+        q_pred, decoder_weights = self.BuildAGNN_decoder(action_embed, cur_state_embed)
+
+        if self.cfg['IsPrioritizedSampling']:
+            self.TD_errors = tf.reduce_sum(tf.abs(self.target - q_pred), axis=1)    # for updating Sumtree
+            if self.cfg['IsHuberloss']:
+                loss_rl = tf.losses.huber_loss(self.ISWeights * self.target, self.ISWeights * q_pred)
+            else:
+                loss_rl = tf.reduce_mean(self.ISWeights * tf.squared_difference(self.target, q_pred))
+        else:
+            if self.cfg['IsHuberloss']:
+                loss_rl = tf.losses.huber_loss(self.target, q_pred)
+            else:
+                loss_rl = tf.losses.mean_squared_error(self.target, q_pred)
+        # calculate full loss
+        loss = loss_rl
+
+        trainStep = tf.compat.v1.train.AdamOptimizer(self.cfg['LEARNING_RATE']).minimize(loss)
+
+        rep_state = tf.sparse.sparse_dense_matmul(tf.cast(self.rep_global, tf.float32), cur_state_embed)
+        q_on_all, decoder_weights = self.BuildAGNN_decoder(cur_node_embed, rep_state, weights=decoder_weights)
+        return loss, trainStep, q_pred, q_on_all, tf.compat.v1.trainable_variables()
+    
+    def BuildAGNN(self):
+        # some definitions for convenience
+        cdef int node_init_dim = self.cfg['node_init_dim']
+        cdef int edge_init_dim = self.cfg['edge_init_dim']
+        cdef int state_init_dim = self.cfg['state_init_dim']
+        
+        cdef int node_embed_dim = self.cfg['node_embed_dim']
+        cdef int edge_embed_dim = self.cfg['edge_embed_dim']
+        cdef double initialization_stddev = self.cfg['initialization_stddev']
+
+        cdef int max_bp_iter = self.cfg['max_bp_iter']
+        assert(node_embed_dim == edge_embed_dim)
+        # [node_init_dim, node_embed_dim]
+        w_n2l = tf.Variable(tf.truncated_normal([node_init_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
+
+        # [node_init_dim, node_embed_dim], state input embedding matrix
+        w_s2l = tf.Variable(tf.truncated_normal([state_init_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
+
+        # [edge_init_dim, edge_embed_dim]
+        w_e2l = tf.Variable(tf.truncated_normal([edge_init_dim, edge_embed_dim], stddev=initialization_stddev), tf.float32)
+
+        U = [tf.Variable(tf.truncated_normal([node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32) for i in range(max_bp_iter)]
+        V = [tf.Variable(tf.truncated_normal([node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32) for i in range(max_bp_iter)]
+        A = [tf.Variable(tf.truncated_normal([node_embed_dim, edge_embed_dim], stddev=initialization_stddev), tf.float32) for i in range(max_bp_iter)]
+        B = [tf.Variable(tf.truncated_normal([node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32) for i in range(max_bp_iter)]
+        C = [tf.Variable(tf.truncated_normal([node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32) for i in range(max_bp_iter)]
+        
+        # [node_cnt, node_init_dim] * [node_init_dim, node_embed_dim] = [node_cnt, node_embed_dim], not sparse
+        node_init = tf.matmul(tf.cast(self.node_input, tf.float32), w_n2l)
+        cur_node_embed = node_init
+        
+        # [batch_size, node_init_dim]
+        num_samples = tf.shape(self.subgsum_param)[0]
+        state_input = tf.ones((num_samples, state_init_dim))
+        # [batch_size, node_init_dim] * [node_init_dim, node_embed_dim] = [batch_size, node_embed_dim]
+        state_init = tf.matmul(tf.cast(state_input, tf.float32), w_s2l)
+        cur_state_embed = state_init
+        
+        # [edge_cnt, edge_dim] * [edge_dim, embed_dim] = [edge_cnt, embed_dim]
+        edge_init = tf.matmul(tf.cast(self.edge_input, tf.float32), w_e2l)
+        cur_edge_embed = edge_init
+
+        ################### GNN start ###################
+        cdef int lv = 0
+        while lv < max_bp_iter:
+            cur_node_embed_prev = tf.identity(cur_node_embed)
+            # node embed update
+            node_linear_0 = tf.matmul(cur_node_embed, V[lv])
+            tmp_n2e = tf.sparse.sparse_dense_matmul(tf.cast(self.n2esum_param_0, tf.float32), node_linear_0)
+            
+            tmp_edge_embed = tf.math.sigmoid(cur_edge_embed)
+            mult_edge_embed = tf.math.multiply(tmp_edge_embed, tmp_n2e)
+            
+            new_node_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.e2nsum_param, tf.float32), mult_edge_embed)
+            node_linear_1 = tf.matmul(cur_node_embed, U[lv])
+            new_node_embed = tf.math.add(node_linear_1, new_node_embed)
+            
+            norm_layer_0 = tf.keras.layers.LayerNormalization()
+            new_node_embed = tf.reshape(new_node_embed, [-1, node_embed_dim])
+            new_node_embed = norm_layer_0(new_node_embed)
+            new_node_embed = tf.nn.relu(new_node_embed)
+            cur_node_embed = tf.math.add(cur_node_embed, new_node_embed)
+
+            # edge embed update
+            tmp_node_embed_0 = tf.matmul(cur_node_embed_prev, B[lv])
+            tmp_node_embed_1 = tf.matmul(cur_node_embed_prev, C[lv])
+            
+            tmp_n2e_0 = tf.sparse.sparse_dense_matmul(tf.cast(self.n2esum_param_0, tf.float32), tmp_node_embed_0)
+            tmp_n2e_1 = tf.sparse.sparse_dense_matmul(tf.cast(self.n2esum_param_1, tf.float32), tmp_node_embed_1)
+            
+            tmp_edge_embed = tf.matmul(cur_edge_embed, A[lv])
+            
+            sum_edge_embed = tf.math.add(tmp_n2e_0, tmp_n2e_1)
+            sum_edge_embed = tf.math.add(sum_edge_embed, tmp_edge_embed)
+            
+            norm_layer_1 = tf.keras.layers.LayerNormalization()
+            new_edge_embed = tf.reshape(sum_edge_embed, [-1, edge_embed_dim])
+            new_edge_embed = norm_layer_1(new_edge_embed)
+            new_edge_embed = tf.nn.relu(new_edge_embed)
+            cur_edge_embed = tf.math.add(cur_edge_embed, new_edge_embed)
+            
+            lv = lv + 1
+        
+        # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
+        action_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.action_select, tf.float32), cur_node_embed)
+        
+        # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
+        cur_state_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.state_sum_param, tf.float32), cur_node_embed)
+        norm_layer_2 = tf.keras.layers.LayerNormalization()
+        cur_state_embed = tf.reshape(cur_state_embed, [-1, node_embed_dim])
+        cur_state_embed = norm_layer_2(cur_state_embed)
+        
+        embed_s_a = tf.concat([action_embed, cur_state_embed], axis=1)
+        h1_weight = tf.Variable(tf.truncated_normal([2*node_embed_dim, self.cfg['REG_HIDDEN']], 
+                                                    stddev=initialization_stddev), tf.float32)
+        # [batch_size, (2)node_embed_dim] * [(2)node_embed_dim, reg_hidden] = [batch_size, reg_hidden], dense
+        hidden = tf.matmul(embed_s_a, h1_weight)
+        # [batch_size, reg_hidden]
+        last_output = tf.nn.relu(hidden)
+
+        last_w = tf.Variable(tf.truncated_normal([self.cfg['REG_HIDDEN'], 1], stddev=initialization_stddev), tf.float32)
+
+         # [batch_size, reg_hidden] * [reg_hidden, 1] = [batch_size, 1]
+        q_pred = tf.matmul(last_output, last_w)
+
+        if self.cfg['IsPrioritizedSampling']:
+            self.TD_errors = tf.reduce_sum(tf.abs(self.target - q_pred), axis=1)    # for updating Sumtree
+            if self.cfg['IsHuberloss']:
+                loss_rl = tf.losses.huber_loss(self.ISWeights * self.target, self.ISWeights * q_pred)
+            else:
+                loss_rl = tf.reduce_mean(self.ISWeights * tf.squared_difference(self.target, q_pred))
+        else:
+            if self.cfg['IsHuberloss']:
+                loss_rl = tf.losses.huber_loss(self.target, q_pred)
+            else:
+                loss_rl = tf.losses.mean_squared_error(self.target, q_pred)
+        # calculate full loss
+        loss = loss_rl
+
+        trainStep = tf.compat.v1.train.AdamOptimizer(self.cfg['LEARNING_RATE']).minimize(loss)
+
+        rep_state = tf.sparse.sparse_dense_matmul(tf.cast(self.rep_global, tf.float32), cur_state_embed)
+        
+        embed_s_a_all = tf.concat([cur_node_embed, rep_state], axis=1)
+
+        # [node_cnt, (2)node_embed_dim] * [(2)node_embed_dim, reg_hidden] = [node_cnt, reg_hidden], dense
+        hidden = tf.matmul(embed_s_a_all, h1_weight)
+        
+        # [node_cnt, reg_hidden]
+        last_output = tf.nn.relu(hidden)
+
+        # [node_cnt, reg_hidden] * [reg_hidden, 1] = [node_cnt，1]
+        q_on_all = tf.matmul(last_output, last_w)
+
+        return loss, trainStep, q_pred, q_on_all, tf.compat.v1.trainable_variables()
+
     def BuildNet(self):
         """
         Builds the Tensorflow network, returning different options to access it
@@ -759,9 +1059,9 @@ class FINDER:
                 test_start = time.time()
                 for idx in range(n_valid):
                     if valid_lengths:
-                        frac += self.Test(idx)/valid_lengths[idx]
+                        frac += self.Test(idx)[0]/valid_lengths[idx]
                     else:
-                        frac += self.Test(idx)
+                        frac += self.Test(idx)[0]
                 test_end = time.time()
                 # print("Test finished, sleeping for 5 seconds...")
                 # time.sleep(5)
@@ -787,7 +1087,7 @@ class FINDER:
         self.writer.close()
 
 
-    def Test(self, int gid):
+    def Test(self, int gid, print_out=True):
         cdef int help_func = self.cfg['help_func']
         g_list = []
         self.test_env.s0(self.TestSet.Get(gid))
@@ -801,14 +1101,14 @@ class FINDER:
             # print("Num orig nodes:", g_list[0].num_nodes)
             list_pred = self.PredictWithCurrentQNet(g_list, [self.test_env.action_list])         
             new_action = self.argMax(list_pred[0])
-            if gid == 0:
+            if print_out and gid == 0:
                 print("list_pred:", list_pred)
                 print("new action:", new_action)
             self.test_env.stepWithoutReward(new_action)
             self.print_params = False
             # sol.append(new_action)
         sol = self.test_env.action_list
-        if gid == 0:
+        if print_out and gid == 0:
             print(sol)
         nodes = list(range(g_list[0].num_nodes))
         solution = sol + list(set(nodes)^set(sol))
@@ -816,7 +1116,7 @@ class FINDER:
         # print("nodes:", nodes)
         # print("Solution:", solution)
         Tourlength = self.utils.getTourLength(g_list[0], solution)
-        return Tourlength
+        return Tourlength, solution
     
 
     def PlayGame(self, int n_traj, double eps):
@@ -1009,10 +1309,12 @@ class FINDER:
                 pass
             
             if isSnapShot:
-                result = self.session.run([self.q_on_allT, self.tensor_list], feed_dict = my_dict)
+                result = self.session.run([self.q_on_allT], feed_dict=my_dict)
+                # result = self.session.run([self.q_on_allT, self.tensor_list], feed_dict = my_dict)
                 # print("sucessfully ran training session")
             else:
-                result = self.session.run([self.q_on_all, self.tensor_list], feed_dict = my_dict)
+                result = self.session.run([self.q_on_all], feed_dict=my_dict)
+                # result = self.session.run([self.q_on_all, self.tensor_list], feed_dict = my_dict)
                 # print("sucessfully ran training session")
             raw_output = result[0]
             # set Q values for all nodes that have already been chosen to negative inf
@@ -1211,13 +1513,13 @@ class FINDER:
     
     
     def Evaluate(self, g):
-        self.InsertGraph(g, is_test=True)
-        t1 = time.time()
-        len, sol = self.GetSol(0)
-        t2 = time.time()
-        sol_time = (t2 - t1)
         # reset test set
         self.ClearTestGraphs()
+        self.InsertGraph(g, is_test=True)
+        t1 = time.time()
+        len, sol = self.Test(0, print_out=False)
+        t2 = time.time()
+        sol_time = (t2 - t1)
         return len, sol, sol_time
 
 
