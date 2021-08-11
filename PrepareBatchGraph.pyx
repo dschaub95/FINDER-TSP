@@ -105,8 +105,12 @@ cdef class py_PrepareBatchGraph:
         matrix = deref(deref(self.inner_PrepareBatchGraph).e2nsum_param)
         return self.ConvertSparseToTensor(matrix)
     @property
-    def n2esum_param(self):
-        matrix = deref(deref(self.inner_PrepareBatchGraph).n2esum_param)
+    def n2esum_param_0(self):
+        matrix = deref(deref(self.inner_PrepareBatchGraph).n2esum_param_0)
+        return self.ConvertSparseToTensor(matrix)
+    @property
+    def n2esum_param_1(self):
+        matrix = deref(deref(self.inner_PrepareBatchGraph).n2esum_param_1)
         return self.ConvertSparseToTensor(matrix)
     @property
     def start_param(self):
@@ -119,6 +123,14 @@ cdef class py_PrepareBatchGraph:
     @property
     def state_sum_param(self):
         matrix = deref(deref(self.inner_PrepareBatchGraph).state_sum_param)
+        return self.ConvertSparseToTensor(matrix)
+    @property
+    def state_param(self):
+        matrix = deref(deref(self.inner_PrepareBatchGraph).state_param)
+        return self.ConvertSparseToTensor(matrix)
+    @property
+    def mask_param(self):
+        matrix = deref(deref(self.inner_PrepareBatchGraph).mask_param)
         return self.ConvertSparseToTensor(matrix)
     @property
     def idx_map_list(self):
