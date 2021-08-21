@@ -46,7 +46,7 @@ public:
 
     std::vector< std::vector<int> > state_seq;
 
-    std::vector<int> act_seq, action_list;
+    std::vector<int> act_seq, state;
 
     std::vector<double> reward_seq, sum_rewards;
 

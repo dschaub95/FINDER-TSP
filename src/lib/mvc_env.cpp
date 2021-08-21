@@ -17,7 +17,7 @@ MvcEnv::MvcEnv(double _norm, int _help_func, int _sign)
     numCoveredEdges = 0;
     state_seq.clear();
     act_seq.clear();
-    action_list.clear();
+    state.clear();
     reward_seq.clear();
     sum_rewards.clear();
     covered_set.clear();
@@ -33,7 +33,7 @@ MvcEnv::~MvcEnv()
     numCoveredEdges = 0;
     state_seq.clear();
     act_seq.clear();
-    action_list.clear();
+    state.clear();
     reward_seq.clear();
     sum_rewards.clear();
     covered_set.clear();
@@ -47,8 +47,8 @@ void MvcEnv::s0(std::shared_ptr<Graph> _g)
     // make norm depend on specific graph if selected
     if ((int)norm == -1) { norm = _g->num_nodes; }
     covered_set.clear();
-    action_list.clear();
-    action_list.push_back(0);
+    state.clear();
+    state.push_back(0);
     covered_set.insert(0);
     numCoveredEdges = 0;
     state_seq.clear();
@@ -57,8 +57,6 @@ void MvcEnv::s0(std::shared_ptr<Graph> _g)
     sum_rewards.clear();
 }
 
-
-
 double MvcEnv::step(int a)
 // takes node as action
 {
@@ -66,7 +64,7 @@ double MvcEnv::step(int a)
     // make sure node was not yet visited
     assert(covered_set.count(a) == 0);
     // assert(a > 0 && a < graph->num_nodes);
-    state_seq.push_back(action_list);
+    state_seq.push_back(state);
     act_seq.push_back(a);
     double r_t;
     if (help_func == 1)
@@ -78,9 +76,9 @@ double MvcEnv::step(int a)
     {
         // printf("Calculating tour difference without helper function..\n");
         r_t = getTourDifference(a);
-        action_list.push_back(a);
+        state.push_back(a);
         covered_set.insert(a);
-        // action_list.push_back(a);
+        // state.push_back(a);
         // covered_set.insert(a);
         // r_t = getReward();
     }
@@ -103,7 +101,7 @@ void MvcEnv::stepWithoutReward(int a)
     }
     else 
     {
-        action_list.push_back(a);
+        state.push_back(a);
         covered_set.insert(a);
     }
     for (auto neigh : graph->adj_list[a])
@@ -138,31 +136,31 @@ int MvcEnv::randomAction()
 bool MvcEnv::isTerminal()
 {
     assert(graph);
-    // printf("Size Action list: %d\n", (int)action_list.size());
+    // printf("Size Action list: %d\n", (int)state.size());
     // printf("Graph Nodes: %d\n", graph->num_nodes);
-    // printf("Bool: %d\n", ((int)action_list.size() == (int)graph->num_nodes));
-    // return (int)action_list.size() == (int)graph->num_nodes - 1;
-    return (int)action_list.size() == (int)graph->num_nodes;
+    // printf("Bool: %d\n", ((int)state.size() == (int)graph->num_nodes));
+    // return (int)state.size() == (int)graph->num_nodes - 1;
+    return (int)state.size() == (int)graph->num_nodes;
 }
 
 double MvcEnv::add_node(int new_node)
 {
     double cur_dist = 10000000.0;
     int pos = -1;
-    for (size_t i = 0; i < action_list.size(); ++i)
+    for (size_t i = 0; i < state.size(); ++i)
     {
         int adj;
-        if (i + 1 == action_list.size())
+        if (i + 1 == state.size())
         {
-            adj = action_list[0];
+            adj = state[0];
         }    
         else
         {
-            adj = action_list[i + 1]; 
+            adj = state[i + 1]; 
         }
-        double cost = graph->EdgeWeight[new_node][action_list[i]]
+        double cost = graph->EdgeWeight[new_node][state[i]]
                       + graph->EdgeWeight[new_node][adj]
-                      - graph->EdgeWeight[action_list[i]][adj];
+                      - graph->EdgeWeight[state[i]][adj];
         if (cost < cur_dist)
         {
             cur_dist = cost;
@@ -171,7 +169,7 @@ double MvcEnv::add_node(int new_node)
     }
     assert(pos >= 0);
     assert(cur_dist >= -1e-8);
-    action_list.insert(action_list.begin() + pos + 1, new_node);
+    state.insert(state.begin() + pos + 1, new_node);
     covered_set.insert(new_node);
     return sign * cur_dist / norm;  	
 }
@@ -181,8 +179,8 @@ double MvcEnv::getTourDifference(int new_node)
 {
     assert(graph);
     
-    int adj = action_list[0];
-    int last_node = action_list[action_list.size()-1];
+    int adj = state[0];
+    int last_node = state[state.size()-1];
     double cost = graph->EdgeWeight[last_node][new_node]
                   + graph->EdgeWeight[new_node][adj]
                   - graph->EdgeWeight[last_node][adj]; 
@@ -217,7 +215,7 @@ double MvcEnv::getReward()
     // TSP reward
     double reward = 0;
     // the last set of available nbodes consists of two nodes, selecting one determines the entire tour length --> no further action needed
-    if ((int)action_list.size() == graph->num_nodes - 1)
+    if ((int)state.size() == graph->num_nodes - 1)
     {
         reward = -(double)getLastTourDifference();
     }
@@ -236,18 +234,18 @@ double MvcEnv::getLastTourDifference()
 {
     double previousLength = 0.0;
     double currentLength = 0.0;
-    assert((int)action_list.size() > 2);
+    assert((int)state.size() > 2);
     
     // get name of the last remaining node
     int last_node = randomAction();
-    int size = action_list.size();
+    int size = state.size();
     // calc length of the last part of the current tour, ranging from third last node to the start node
-    currentLength += graph->EdgeWeight[action_list[size-2]][action_list[size-1]];
-    currentLength += graph->EdgeWeight[action_list[size-1]][last_node];
-    currentLength += graph->EdgeWeight[last_node][action_list[0]];
+    currentLength += graph->EdgeWeight[state[size-2]][state[size-1]];
+    currentLength += graph->EdgeWeight[state[size-1]][last_node];
+    currentLength += graph->EdgeWeight[last_node][state[0]];
 
     // calc length of the last part of the previous tour
-    previousLength += graph->EdgeWeight[action_list[size-2]][action_list[0]];
+    previousLength += graph->EdgeWeight[state[size-2]][state[0]];
   
     return currentLength - previousLength;
 }

@@ -83,8 +83,8 @@ cdef class py_MvcEnv:
         return deref(self.inner_MvcEnv).act_seq
 
     @property
-    def action_list(self):
-        return deref(self.inner_MvcEnv).action_list
+    def state(self):
+        return deref(self.inner_MvcEnv).state
 
     @property
     def reward_seq(self):

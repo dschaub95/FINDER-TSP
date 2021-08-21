@@ -23,7 +23,7 @@ cdef extern from "./src/lib/mvc_env.h":
         shared_ptr[Graph] graph
         vector[vector[int]]  state_seq
         vector[int] act_seq
-        vector[int] action_list
+        vector[int] state
         vector[double] reward_seq
         vector[double] sum_rewards
         int numCoveredEdges
