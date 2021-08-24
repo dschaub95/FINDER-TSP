@@ -15,7 +15,7 @@ import numpy as np
 cdef class py_Graph:
     cdef shared_ptr[Graph] inner_graph
 
-    def __cinit__(self, *arg):
+    def __cinit__(self, *args):
         '''doing something before python calls the __init__.
         C/C++ objects of cdef must be initialized inside __cinit__, otherwise no memory is allocated for them
         Can take arguments and use python's variable argument model to implement function overloading-like functionality.。'''
@@ -31,18 +31,18 @@ cdef class py_Graph:
         cdef double[:,:] node_feats
         cdef double[:,:] EdgeWeight
         
-        if len(arg) == 0:
+        if len(args) == 0:
             deref(self.inner_graph).num_edges = 0
             deref(self.inner_graph).num_nodes = 0
-        elif len(arg) == 7:
-            _num_nodes = arg[0]
-            _num_edges = arg[1]
-            edges_from = np.array([int(x) for x in arg[2]], dtype=np.int32)
-            edges_to = np.array([int(x) for x in arg[3]], dtype=np.int32)
-            EdgeWeight = np.array([x for x in arg[4]], dtype=np.double)
-            node_feats = np.array([x for x in arg[5]], dtype=np.double)
-            _NN_ratio = arg[6]
-            # print("True weights\n", arg[4])
+        elif len(args) == 7:
+            _num_nodes = args[0]
+            _num_edges = args[1]
+            edges_from = np.array([int(x) for x in args[2]], dtype=np.int32)
+            edges_to = np.array([int(x) for x in args[3]], dtype=np.int32)
+            EdgeWeight = np.array([x for x in args[4]], dtype=np.double)
+            node_feats = np.array([x for x in args[5]], dtype=np.double)
+            _NN_ratio = args[6]
+            # print("True weights\n", args[4])
             self.reshape_Graph(_num_nodes,  _num_edges,  edges_from,  edges_to, EdgeWeight, node_feats, _NN_ratio)   
         else:
             print('Error: py_Graph class was not initialized successfully because the number of parameters provided did not match, and the number of parameters was not 0 or 6.')

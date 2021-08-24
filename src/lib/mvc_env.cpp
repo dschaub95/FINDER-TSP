@@ -8,6 +8,22 @@
 #include <stack>
 #include <cstdio>
 
+MvcEnv::MvcEnv()
+{
+    norm = 0;
+    graph = nullptr;
+    sign = 0;
+    help_func = 0;
+    numCoveredEdges = 0;
+    state_seq.clear();
+    act_seq.clear();
+    state.clear();
+    reward_seq.clear();
+    sum_rewards.clear();
+    covered_set.clear();
+    avail_list.clear();
+}
+
 MvcEnv::MvcEnv(double _norm, int _help_func, int _sign)
 {
     norm = _norm;
@@ -22,6 +38,11 @@ MvcEnv::MvcEnv(double _norm, int _help_func, int _sign)
     sum_rewards.clear();
     covered_set.clear();
     avail_list.clear();
+}
+
+MvcEnv::MvcEnv(std::shared_ptr<MvcEnv> mvc_env)
+{
+
 }
 
 MvcEnv::~MvcEnv()
@@ -95,6 +116,7 @@ void MvcEnv::stepWithoutReward(int a)
 {
     assert(graph);
     assert(covered_set.count(a) == 0);
+    act_seq.push_back(a);
     if (help_func == 1)
     {
         double tmp_reward = add_node(a);

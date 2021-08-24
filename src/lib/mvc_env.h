@@ -10,7 +10,11 @@
 class MvcEnv
 {
 public:
+    MvcEnv();
+
     MvcEnv(double _norm, int _help_func, int _sign);
+
+    MvcEnv(std::shared_ptr<MvcEnv> mvc_env);
 
     ~MvcEnv();
 
