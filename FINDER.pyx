@@ -1,10 +1,5 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Dec 19 00:33:33 2017
-
-@author: fanchangjun
-"""
 
 from __future__ import print_function, division
 
@@ -42,106 +37,9 @@ cdef double inf = 1073741823.5
 
 class FINDER:
     
-    def __init__(self, train_config_path, test_config_path=None):
+    def __init__(self, config, train_config_path=None, test_config_path=None):
         
-        
-        # read input config
-        config = utils.read_config(train_config_path)
-        if test_config_path:
-            try:
-                test_config = utils.read_config(train_config_path)
-            except:
-                pass
-        # initialize FINDER config with default values
-        self.cfg = dict()
-        
-        # Environment parameters
-        self.cfg['help_func'] = 0 # whether to use helper function during node insertion process, which inserts node into best position in current partial tour
-        
-        # GNN hyperparameters
-        self.cfg['net_type'] = 'AGNN'
-        self.cfg['max_bp_iter'] = 3 # number of aggregation steps in GNN equals number of layers
-        self.cfg['aggregatorID'] = 0 # 0:sum; 1:mean; 2:GCN; 3:edge weight based sum
-        self.cfg['node_init_dim'] = 4 # number of initial node features
-        self.cfg['edge_init_dim'] = 4 # number of initial edge features
-        self.cfg['state_init_dim'] = 4
-        # self.cfg['state_embed_dim'] = 64
-        self.cfg['node_embed_dim'] = 64
-        self.cfg['edge_embed_dim'] = 64
-        self.cfg['embeddingMethod'] = 2
-        self.cfg['ignore_covered_edges'] = 0 
-        self.cfg['selected_nodes_inclusion'] = 2
-        self.cfg['focus_start_end_node'] = 1
-        self.cfg['state_representation'] = 0
-        
-        # general training hyperparameters
-        self.cfg['IsHuberloss'] = 0
-        self.cfg['BATCH_SIZE'] = 64
-        self.cfg['initialization_stddev'] = 0.01
-        self.cfg['MAX_ITERATION'] = 150000
-        self.cfg['LEARNING_RATE'] = 0.001
-        self.cfg['Alpha'] = 0.001
-        self.cfg['save_interval'] = 300
-        self.cfg['num_env'] = 1
-        self.cfg['dropout_rate'] = 0.2
-
-        # training set specifications
-        self.cfg['g_type'] = 'tsp_2d'
-        self.cfg['NUM_MIN'] = 15
-        self.cfg['NUM_MAX'] = 20
-        self.cfg['NN_ratio'] = 1.0
-        self.cfg['n_generator'] = 1000
-
-        # Decoder hyperparameters
-        self.cfg['decoder'] = 0
-        self.cfg['REG_HIDDEN'] = 32
-        
-        # search startegy
-        self.cfg['search_strategy'] = 'greedy'
-        self.cfg['beam_width'] = 64
-
-        # Q-learning hyperparameters
-        self.cfg['IsDoubleDQN'] = 0
-        self.cfg['N_STEP'] = 5
-        self.cfg['GAMMA'] = 1.0
-        self.cfg['UPDATE_TIME'] = 1000
-        self.cfg['eps_start'] = 1.0
-        self.cfg['eps_end'] = 0.05
-        self.cfg['eps_step'] = 10000.0
-        self.cfg['MEMORY_SIZE'] = 150000
-        self.cfg['reward_normalization'] = 'max'
-        self.cfg['reward_sign'] = -1
-        self.cfg['one_step_encoding'] = 0
-
-        # validation set info
-        self.cfg['valid_path'] = 'valid_sets/synthetic_nrange_15_20_200/'
-        self.cfg['valid_scale_fac'] = 0.0001
-        self.cfg['n_valid'] = 200
-
-        # (hyper)parameters for prioritized replay sampling
-        self.cfg['IsPrioritizedSampling'] = 0
-        self.cfg['epsilon'] = 0.0000001
-        self.cfg['alpha'] = 0.6
-        self.cfg['beta'] = 0.4
-        self.cfg['beta_increment_per_sampling'] = 0.001
-        self.cfg['TD_err_upper'] = 1.0
-
-        # overwrite each config key value with value from external config file (where possible)
-        for key in self.cfg:         
-            try:
-                self.cfg[key] = config[key]
-                print("Sucessfully loaded key '{}' from external config file!".format(key))
-            except:
-                print("Error when loading key '{}' from external config file!".format(key))
-                print("Using default value {} instead!".format(self.cfg[key]))
-
-        # if test config provided overwrite corresponding values
-        for key in self.cfg:         
-            try:
-                self.cfg[key] = test_config[key]
-                print(f"Sucessfully overwrote key '{key}' with value {test_config[key]} from external test config file!")
-            except:
-                pass
+        self.cfg = config
         
         self.print_params = True
         self.print_test_prediction = True
@@ -190,49 +88,8 @@ class FINDER:
 
         # for the test env the norm is not used since no reward is calculated
         self.test_env = mvc_env.py_MvcEnv(NUM_MAX, help_func, reward_sign)
-        if self.cfg['search_strategy'] == 'beam_search' or self.cfg['search_strategy'] == 'beam_search+':
-            self.test_env_list = [mvc_env.py_MvcEnv(NUM_MAX, help_func, reward_sign) for i in range(self.cfg['beam_width'])]
 
-        self.placeholder_dict = dict()
-        # encoder inputs
-        # [node_cnt, node_init_dim]
-        self.placeholder_dict['node_input'] = tf.placeholder(tf.float32, name="node_input")
-        # [edge_cnt, edge_init_dim]
-        self.placeholder_dict['edge_sum'] = tf.placeholder(tf.float32, name="edge_sum")
-        # [edge_cnt, edge_init_dim]
-        self.placeholder_dict['edge_input'] = tf.placeholder(tf.float32, name="edge_input")
-        # [node_cnt, node_cnt]
-        self.placeholder_dict['n2nsum_param'] = tf.sparse_placeholder(tf.float32, name="n2nsum_param")
-        # [node_cnt, edge_cnt]
-        self.placeholder_dict['e2nsum_param'] = tf.sparse_placeholder(tf.float32, name="e2nsum_param")
-        # [edge_cnt, node_cnt]
-        self.placeholder_dict['n2esum_param_0'] = tf.sparse_placeholder(tf.float32, name="n2esum_param_0")
-        # [edge_cnt, node_cnt]
-        self.placeholder_dict['n2esum_param_1'] = tf.sparse_placeholder(tf.float32, name="n2esum_param_1")
-
-        # [batch_size, node_cnt]
-        self.placeholder_dict['action_select'] = tf.sparse_placeholder(tf.float32, name="action_select")
-        # [batch_size, node_cnt]
-        self.placeholder_dict['start_param'] = tf.sparse_placeholder(tf.float32, name="start_param")
-        # [batch_size, node_cnt]
-        self.placeholder_dict['end_param'] = tf.sparse_placeholder(tf.float32, name="end_param")
-        # [batch_size, node_cnt]
-        self.placeholder_dict['state_sum_param'] = tf.sparse_placeholder(tf.float32, name="state_sum_param")
-        # [max_nodes*batch_size, node_cnt]
-        self.placeholder_dict['state_param'] = tf.sparse_placeholder(tf.float32, name="state_param")
-        # [node_cnt, node_cnt]
-        self.placeholder_dict['mask_param'] = tf.sparse_placeholder(tf.float32, name="mask_param")
-        # [node_cnt, node_cnt]
-        self.placeholder_dict['laplacian_param'] = tf.sparse_placeholder(tf.float32, name="laplacian_param")
-        # [batch_size, node_cnt], sum over all noce embeddings for virtual node state representation
-        self.placeholder_dict['subgsum_param'] = tf.sparse_placeholder(tf.float32, name="subgsum_param")
-        # [node_cnt, batch_size]
-        self.placeholder_dict['rep_global'] = tf.sparse_placeholder(tf.float32, name="rep_global")
-        # []
-        self.placeholder_dict['is_training'] = tf.placeholder(tf.bool, name="is_training")
-        # [batch_size, 1]
-        self.placeholder_dict['target'] = tf.placeholder(tf.float32, [self.cfg['BATCH_SIZE'], 1], name="target")
-
+        self.set_up_placeholder_dict()
 
         if self.cfg['IsPrioritizedSampling']:
             self.ISWeights = tf.placeholder(tf.float32, [self.cfg['BATCH_SIZE'], 1], name='IS_weights')
@@ -255,9 +112,9 @@ class FINDER:
             with tf.compat.v1.variable_scope('train_DQN'):
                 self.loss, self.trainStep, self.q_pred, self.q_on_all, self.Q_param_list = self.BuildAGNN() #[loss,trainStep,q_pred, q_on_all, ...]
             self.Q_param_list = tf.compat.v1.trainable_variables(scope='train_DQN')
-            print("DQN params", [tensor.name for tensor in self.Q_param_list])
-            print(len(self.Q_param_list))
-            print("Train Decoder params",[tensor.name for tensor in tf.compat.v1.trainable_variables(scope='train_DQN/decoder')])
+            # print("DQN params", [tensor.name for tensor in self.Q_param_list])
+            # print(len(self.Q_param_list))
+            # print("Train Decoder params",[tensor.name for tensor in tf.compat.v1.trainable_variables(scope='train_DQN/decoder')])
             #init Target Q Network
             with tf.compat.v1.variable_scope('target_DQN'):
                 self.node_embed_target, self.edge_embed_target = self.BuildAGNN_encoder()
@@ -267,8 +124,8 @@ class FINDER:
                 self.q_on_allT, temp_weights = self.BuildAGNN_decoder(self.node_embed_target, self.state_embed_target, repeat_states=True)
                 # self.lossT, self.trainStepT, self.q_predT, self.q_on_allT, self.Q_param_listT = self.BuildAGNN()
             self.Q_param_listT = tf.compat.v1.trainable_variables(scope='target_DQN')
-            print("Target DQN params", [tensor.name for tensor in self.Q_param_listT])
-            print(len(self.Q_param_listT))
+            # print("Target DQN params", [tensor.name for tensor in self.Q_param_listT])
+            # print(len(self.Q_param_listT))
 
             self.init_node_embed = None
             
@@ -287,8 +144,8 @@ class FINDER:
             # print("Decoder params", [tensor.name for tensor in self.decoder_params])
         
             self.test_DQN_params = tf.compat.v1.trainable_variables(scope='test_DQN')
-            print("Test DQN params", [tensor.name for tensor in self.test_DQN_params])
-            print(len(self.test_DQN_params))
+            # print("Test DQN params", [tensor.name for tensor in self.test_DQN_params])
+            # print(len(self.test_DQN_params))
             self.UpdateTestDQN = tf.group(*[a.assign(b) for a,b in zip(self.test_DQN_params, self.Q_param_list)])
 
             self.target_DQN_params = tf.compat.v1.trainable_variables(scope='target_DQN')
@@ -321,6 +178,7 @@ class FINDER:
 
 ################################################# New code for FINDER #################################################
 ###################################################### BuildNet start ######################################################    
+    
     def BuildAGNN_encoder(self):
         # some definitions for convenience
         cdef int node_init_dim = self.cfg['node_init_dim']
@@ -410,18 +268,31 @@ class FINDER:
         return cur_node_embed, cur_edge_embed
     
     def BuildAGNN_state_encoder(self, cur_node_embed):
-        
-        # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
-        cur_state_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['state_sum_param'], tf.float32), cur_node_embed)
-        cur_state_embed = tf.reshape(cur_state_embed, [-1, self.cfg['node_embed_dim']])
-        norm_layer = tf.keras.layers.LayerNormalization()
-        cur_state_embed = norm_layer(cur_state_embed)
+        if self.cfg['state_representation'] == 2:
+            cur_state_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['subgsum_param'], tf.float32), cur_node_embed)
+            cur_state_embed = tf.reshape(cur_state_embed, [-1, self.cfg['node_embed_dim']])
+        elif self.cfg['state_representation'] == 1:
+            # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
+            cur_state_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['state_sum_param'], tf.float32), cur_node_embed)
+            cur_state_embed = tf.reshape(cur_state_embed, [-1, self.cfg['node_embed_dim']])
+        elif self.cfg['state_representation'] == 3:
+            num_samples = tf.shape(self.placeholder_dict['subgsum_param'])[0]
+            covered_embed_padded = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['state_param'], tf.float32), cur_node_embed)
+            covered_embed_padded_reshaped = tf.reshape(covered_embed_padded, [num_samples, -1, self.cfg['node_embed_dim']])
+            masked_covered_embed = tf.keras.layers.Masking(mask_value=0.)(covered_embed_padded_reshaped)
+            
+            RNN_cell = tf.keras.layers.LSTMCell(units=64)
+            RNN_layer = tf.keras.layers.RNN(cell=RNN_cell, return_state=True, return_sequences=True)
+            
+            whole_seq_output, final_memory_state, final_carry_state = RNN_layer(masked_covered_embed)
+            cur_state_embed = final_carry_state
+
         cur_state_embed = tf.cond(self.placeholder_dict['is_training'], lambda: tf.nn.dropout(cur_state_embed, rate=self.cfg['dropout_rate']), lambda: cur_state_embed)
         if self.cfg['focus_start_end_node']:
             # [batch_size, node_embed_dim], explitcitly extract the start and end node embeddings
             start_node_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['start_param'], tf.float32), cur_node_embed)
             end_node_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['end_param'], tf.float32), cur_node_embed) 
-            cur_state_embed = tf.concat([cur_state_embed, start_node_embed, end_node_embed])
+            cur_state_embed = tf.concat([cur_state_embed, start_node_embed, end_node_embed], axis=1)
         return cur_state_embed
     
     def BuildAGNN_decoder(self, cur_node_embed, cur_state_embed, weights=None, repeat_states=False):
@@ -489,7 +360,15 @@ class FINDER:
         cdef int NUM_MIN = self.cfg['NUM_MIN']
         cdef int NUM_MAX = self.cfg['NUM_MAX']
         cdef int n_generator = self.cfg['n_generator']
-        
+        cdef double eps_start = self.cfg['eps_start'] 
+        cdef double eps_end = self.cfg['eps_end']
+        cdef double eps_step =  self.cfg['eps_step']
+        cdef int MAX_ITERATION = self.cfg['MAX_ITERATION']
+        cdef int n_valid = self.cfg['n_valid']
+        cdef double loss = 0.0
+        cdef double frac, start, end
+        cdef int i, iter, idx
+
         self.PrepareValidData()
         try:
             valid_lengths = None
@@ -499,16 +378,8 @@ class FINDER:
             valid_lengths = lines
         except:
             print("Could not load validation lengths!")
-        self.gen_new_train_graphs(NUM_MIN, NUM_MAX, n_generator)
+        self.generate_train_graphs(NUM_MIN, NUM_MAX, n_generator)
 
-        cdef double loss = 0.0
-        cdef double frac, start, end
-        cdef double eps_start = self.cfg['eps_start'] 
-        cdef double eps_end = self.cfg['eps_end']
-        cdef double eps_step =  self.cfg['eps_step']
-        cdef int MAX_ITERATION = self.cfg['MAX_ITERATION']
-        cdef int n_valid = self.cfg['n_valid']
-        cdef int i, iter, idx
         
         for i in range(10):
             self.PlayGame(100, 1)
@@ -530,7 +401,7 @@ class FINDER:
             ###########-----------------------normal training data setup(start) -----------------##############################
             if iter and iter % 5000 == 0:
                 print("generating new traning graphs")
-                self.gen_new_train_graphs(NUM_MIN, NUM_MAX, n_generator)
+                self.generate_train_graphs(NUM_MIN, NUM_MAX, n_generator)
             eps = eps_end + max(0., (eps_start - eps_end) * (eps_step - iter) / eps_step)
             print("Epsilon:", eps)
             if iter % 10 == 0:
@@ -637,6 +508,9 @@ class FINDER:
         return self.test_env.state
 
     def solve_with_beam_search(self, graph, select_true_best=False):
+        cdef int help_func = self.cfg['help_func']
+        cdef int reward_sign = self.cfg['reward_sign']
+        self.test_env_list = [mvc_env.py_MvcEnv(1, help_func, reward_sign) for i in range(self.cfg['beam_width'])]
         # can be easily batched
         for test_env in self.test_env_list:
             test_env.s0(graph)
@@ -697,68 +571,96 @@ class FINDER:
             best_tour = sequences[0][0].state
         return best_tour
     
-    def softmax(self, x):
-        return np.exp(x) / np.sum(np.exp(x))
     
-    def PlayGame(self, int n_traj, double eps):
-        print("Playing game!")
-        cdef int N_STEP = self.cfg['N_STEP']
-        self.Run_simulator(n_traj, eps, self.TrainSet, N_STEP)
+    def PredictWithCurrentQNet(self, g_list, covered):
+        # print("predicting with current QNet...")
+        result = self.Predict(g_list, covered, isSnapShot=False)
+        return result
 
-
-    def Run_simulator(self, int num_seq, double eps, TrainSet, int n_step):
-        print("Running simulator...\n")
-        cdef int num_env = len(self.env_list)
-        cdef int n = 0
-        cdef int i
-        cdef int help_func = self.cfg['help_func']
-        # get intial sample
-        for i in range(num_env):
-            g_sample = TrainSet.Sample()
-            self.env_list[i].s0(g_sample)
+    def PredictWithSnapshot(self, g_list, covered):
+        # print("predicting with snapshot...")
+        result = self.Predict(g_list, covered, isSnapShot=True)
+        return result
+    
+    def Predict(self, g_list, covered, isSnapShot, initPred=True, test=False):
+        # print("Running Predict")
+        cdef int n_graphs = len(g_list)
+        cdef int i, j, k, bsize
+        # print("number of graphs for prediction:", n_graphs)
+        for i in range(0, n_graphs, self.cfg['BATCH_SIZE']):
+            # makes sure that th indices start at zero for the first batch and go so on for 
+            bsize = self.cfg['BATCH_SIZE']
+            if (i + self.cfg['BATCH_SIZE']) > n_graphs:
+                bsize = n_graphs - i
+            batch_idxes = np.zeros(bsize)
+            for j in range(i, i + bsize):
+                batch_idxes[j - i] = j
+            batch_idxes = np.int32(batch_idxes)
             
-            self.g_list[i] = self.env_list[i].graph
-            # print("Inserted graph!")
-            # print(self.g_list[i].EdgeWeight)
-            # self.env_list[i].step(0)
-        # num_seq is the number of full sequences starting at an initial state until termination
-        while n < num_seq:
-            for i in range(num_env):
-                # check whether terminal state is reached, if so add the graph to the graph list
-                # print("Checking for terminal state")
-                if self.env_list[i].isTerminal():
-                    n = n + 1
-                    # after reaching the terminal state add all nstep transitions to the replay memory 
-                    # print("adding new experience to the Replay buffer")
-                    self.nStepReplayMem.Add(self.env_list[i], n_step)
-                    # print("Sampling new graph..") 
-                    g_sample = TrainSet.Sample()
-                    self.env_list[i].s0(g_sample)
-                    self.g_list[i] = self.env_list[i].graph
-                    # self.env_list[i].step(0)
-                    # print("added new sample to the graph list, current length:", len(self.g_list))
-            if n >= num_seq:
-                break
-            Random = False
-            if random.uniform(0,1) >= eps:
-                # print("Making prediction")
-                pred = self.PredictWithCurrentQNet(self.g_list, [env.state for env in self.env_list])
-            else:
-                Random = True
-
-            for i in range(num_env):
-                if (Random):
-                    # print("Taking random action")
-                    a_t = self.env_list[i].randomAction()
+            idx_map_list = self.SetupPredAll(batch_idxes, g_list, covered)
+            
+            my_dict = {}
+            for key in self.inputs:
+                my_dict[self.placeholder_dict[key]] = self.inputs[key]
+            
+            if self.print_params:
+                # print("start_param:", my_dict[self.placeholder_dict['start_param']])
+                # print("end_param:", my_dict[self.placeholder_dict['end_param']])
+                # if self.cfg['embeddingMethod'] in [2, 3]:
+                #     print("e2nsum_param:", my_dict[self.placeholder_dict['e2nsum_param']])
+                # print("edge_input", my_dict[self.placeholder_dict['edge_input']])
+                # print("state_param:", my_dict[self.placeholder_dict['state_param']])
+                pass
+            if test:
+                if initPred:
+                    self.init_node_embed = self.session.run(self.node_embed_test, feed_dict=my_dict)
+                    my_dict[self.placeholder_dict['node_embed_input']] = np.array(self.init_node_embed)
+                    result = self.session.run([self.q_on_all_test], feed_dict=my_dict)
+                    # print(self.init_node_embed)
                 else:
-                    a_t = self.argMax(pred[i])
-                # print("Making step")
-                self.env_list[i].step(a_t)
-            # print("Action lists:", [env.state for env in self.env_list])
-            # print("covered set:", [env.covered_set for env in self.env_list])
-            # print("reward sequence:", [env.reward_seq for env in self.env_list])
-            # print("Graph details:", self.g_list[0].num_nodes)
-    
+                    my_dict[self.placeholder_dict['node_embed_input']] = np.array(self.init_node_embed)
+                    result = self.session.run([self.q_on_all_test], feed_dict=my_dict)
+                    # do something based on self.init_node_embed
+            else:
+                if isSnapShot:
+                    result = self.session.run([self.q_on_allT], feed_dict=my_dict)
+                    # result = self.session.run([self.q_on_allT, self.tensor_list], feed_dict = my_dict)
+                    # print("sucessfully ran training session")
+                else:
+                    result = self.session.run([self.q_on_all], feed_dict=my_dict)
+                    # result = self.session.run([self.q_on_all, self.tensor_list], feed_dict = my_dict)
+                    # print("sucessfully ran training session")
+            
+            raw_output = result[0]
+            # set Q values for all nodes that have already been chosen to negative inf
+            if self.print_params:
+                # print("covered embed padded:", np.array(result[1][0]))
+                # print("masked_embed:", np.array(result[1][1]))
+                # print("state_embed:", np.array(result[1][2]))
+                # print("num_samples:", np.array(result[1][3]))
+                # print("shape covered embed:", np.array(result[1][4]))
+                # print("shape covered reshaped embed:", np.array(result[1][5]))
+                # print("num nodes", [g.num_nodes for g in g_list])
+                # print("num covered nodes:", [len(cover) for cover in covered])
+                pass
+            # print(np.array(tensor_list[0]))
+            pos = 0
+            pred = []
+            for j in range(i, i + bsize):
+                idx_map = idx_map_list[j-i]
+                cur_pred = np.zeros(len(idx_map))
+                for k in range(len(idx_map)):
+                    if idx_map[k] < 0:
+                        cur_pred[k] = -inf
+                    else:
+                        cur_pred[k] = raw_output[pos]
+                        pos += 1
+                for k in covered[j]:
+                    cur_pred[k] = -inf
+                pred.append(cur_pred)
+            assert (pos == len(raw_output))
+        return pred
+
     def prepare_external_inputs(self, prepareBatchGraph):
 
         self.inputs['action_select'] = prepareBatchGraph.act_select
@@ -850,101 +752,46 @@ class FINDER:
     def get_init_embedding(self):
         pass
 
-    def Predict(self, g_list, covered, isSnapShot, initPred=True, test=False):
-        # print("Running Predict")
-        cdef int n_graphs = len(g_list)
-        cdef int i, j, k, bsize
-        # print("number of graphs for prediction:", n_graphs)
-        for i in range(0, n_graphs, self.cfg['BATCH_SIZE']):
-            # makes sure that th indices start at zero for the first batch and go so on for 
-            bsize = self.cfg['BATCH_SIZE']
-            if (i + self.cfg['BATCH_SIZE']) > n_graphs:
-                bsize = n_graphs - i
-            batch_idxes = np.zeros(bsize)
-            for j in range(i, i + bsize):
-                batch_idxes[j - i] = j
-            batch_idxes = np.int32(batch_idxes)
-            
-            idx_map_list = self.SetupPredAll(batch_idxes, g_list, covered)
-            
-            my_dict = {}
-            for key in self.inputs:
-                my_dict[self.placeholder_dict[key]] = self.inputs[key]
-            
-            if self.print_params:
-                # print("start_param:", my_dict[self.placeholder_dict['start_param']])
-                # print("end_param:", my_dict[self.placeholder_dict['end_param']])
-                # if self.cfg['embeddingMethod'] in [2, 3]:
-                #     print("e2nsum_param:", my_dict[self.placeholder_dict['e2nsum_param']])
-                # print("edge_input", my_dict[self.placeholder_dict['edge_input']])
-                # print("state_param:", my_dict[self.placeholder_dict['state_param']])
-                pass
-            if test:
-                if initPred:
-                    self.init_node_embed = self.session.run(self.node_embed_test, feed_dict=my_dict)
-                    my_dict[self.placeholder_dict['node_embed_input']] = np.array(self.init_node_embed)
-                    result = self.session.run([self.q_on_all_test], feed_dict=my_dict)
-                    # print(self.init_node_embed)
-                else:
-                    my_dict[self.placeholder_dict['node_embed_input']] = np.array(self.init_node_embed)
-                    result = self.session.run([self.q_on_all_test], feed_dict=my_dict)
-                    # do something based on self.init_node_embed
-            else:
-                if isSnapShot:
-                    result = self.session.run([self.q_on_allT], feed_dict=my_dict)
-                    # result = self.session.run([self.q_on_allT, self.tensor_list], feed_dict = my_dict)
-                    # print("sucessfully ran training session")
-                else:
-                    result = self.session.run([self.q_on_all], feed_dict=my_dict)
-                    # result = self.session.run([self.q_on_all, self.tensor_list], feed_dict = my_dict)
-                    # print("sucessfully ran training session")
-            
-            raw_output = result[0]
-            # set Q values for all nodes that have already been chosen to negative inf
-            if self.print_params:
-                # print("covered embed padded:", np.array(result[1][0]))
-                # print("masked_embed:", np.array(result[1][1]))
-                # print("state_embed:", np.array(result[1][2]))
-                # print("num_samples:", np.array(result[1][3]))
-                # print("shape covered embed:", np.array(result[1][4]))
-                # print("shape covered reshaped embed:", np.array(result[1][5]))
-                # print("num nodes", [g.num_nodes for g in g_list])
-                # print("num covered nodes:", [len(cover) for cover in covered])
-                pass
-            # print(np.array(tensor_list[0]))
-            pos = 0
-            pred = []
-            for j in range(i, i + bsize):
-                idx_map = idx_map_list[j-i]
-                cur_pred = np.zeros(len(idx_map))
-                for k in range(len(idx_map)):
-                    if idx_map[k] < 0:
-                        cur_pred[k] = -inf
-                    else:
-                        cur_pred[k] = raw_output[pos]
-                        pos += 1
-                for k in covered[j]:
-                    cur_pred[k] = -inf
-                pred.append(cur_pred)
-            assert (pos == len(raw_output))
-        return pred
+    def set_up_placeholder_dict(self):
+        self.placeholder_dict = dict()
+        # encoder inputs
+        # [node_cnt, node_init_dim]
+        self.placeholder_dict['node_input'] = tf.placeholder(tf.float32, name="node_input")
+        # [edge_cnt, edge_init_dim]
+        self.placeholder_dict['edge_sum'] = tf.placeholder(tf.float32, name="edge_sum")
+        # [edge_cnt, edge_init_dim]
+        self.placeholder_dict['edge_input'] = tf.placeholder(tf.float32, name="edge_input")
+        # [node_cnt, node_cnt]
+        self.placeholder_dict['n2nsum_param'] = tf.sparse_placeholder(tf.float32, name="n2nsum_param")
+        # [node_cnt, edge_cnt]
+        self.placeholder_dict['e2nsum_param'] = tf.sparse_placeholder(tf.float32, name="e2nsum_param")
+        # [edge_cnt, node_cnt]
+        self.placeholder_dict['n2esum_param_0'] = tf.sparse_placeholder(tf.float32, name="n2esum_param_0")
+        # [edge_cnt, node_cnt]
+        self.placeholder_dict['n2esum_param_1'] = tf.sparse_placeholder(tf.float32, name="n2esum_param_1")
 
-    def PredictWithCurrentQNet(self, g_list, covered):
-        # print("predicting with current QNet...")
-        result = self.Predict(g_list, covered, isSnapShot=False)
-        return result
-
-    def PredictWithSnapshot(self, g_list, covered):
-        # print("predicting with snapshot...")
-        result = self.Predict(g_list, covered, isSnapShot=True)
-        return result
-
-    def TakeSnapShot(self):
-        # print("Taking snapshot")
-        self.session.run(self.UpdateTargetDQN)
-    
-    def Update_TestDQN(self):
-        self.session.run(self.UpdateTestDQN)
+        # [batch_size, node_cnt]
+        self.placeholder_dict['action_select'] = tf.sparse_placeholder(tf.float32, name="action_select")
+        # [batch_size, node_cnt]
+        self.placeholder_dict['start_param'] = tf.sparse_placeholder(tf.float32, name="start_param")
+        # [batch_size, node_cnt]
+        self.placeholder_dict['end_param'] = tf.sparse_placeholder(tf.float32, name="end_param")
+        # [batch_size, node_cnt]
+        self.placeholder_dict['state_sum_param'] = tf.sparse_placeholder(tf.float32, name="state_sum_param")
+        # [max_nodes*batch_size, node_cnt]
+        self.placeholder_dict['state_param'] = tf.sparse_placeholder(tf.float32, name="state_param")
+        # [node_cnt, node_cnt]
+        self.placeholder_dict['mask_param'] = tf.sparse_placeholder(tf.float32, name="mask_param")
+        # [node_cnt, node_cnt]
+        self.placeholder_dict['laplacian_param'] = tf.sparse_placeholder(tf.float32, name="laplacian_param")
+        # [batch_size, node_cnt], sum over all noce embeddings for virtual node state representation
+        self.placeholder_dict['subgsum_param'] = tf.sparse_placeholder(tf.float32, name="subgsum_param")
+        # [node_cnt, batch_size]
+        self.placeholder_dict['rep_global'] = tf.sparse_placeholder(tf.float32, name="rep_global")
+        # []
+        self.placeholder_dict['is_training'] = tf.placeholder(tf.bool, name="is_training")
+        # [batch_size, 1]
+        self.placeholder_dict['target'] = tf.placeholder(tf.float32, [self.cfg['BATCH_SIZE'], 1], name="target")
 
     def Fit(self):
         # Main function for fitting, uses fit() as sub function
@@ -1001,7 +848,6 @@ class FINDER:
         else:
             return self.fit(sample.g_list, sample.list_st, sample.list_at, list_target)
 
-
     def fit(self, g_list, covered, actions, list_target):
         # sub function for fitting the net
         cdef double loss = 0.0
@@ -1034,26 +880,74 @@ class FINDER:
             loss += result[0]*bsize
             
         return loss / n_graphs
-
-    def findModel(self, VCFile_path=None):
-        if VCFile_path:
-            VCFile = VCFile_path
-        else:
-            VCFile = './models/%s/ModelVC_%d_%d.csv'%(self.cfg['g_type'], self.cfg['NUM_MIN'], self.cfg['NUM_MAX'])
-        vc_list = []
-        for line in open(VCFile):
-            try:
-                vc_list.append(float(line))
-            except:
-                continue
-        min_arg_vc = np.argmin(vc_list)
-        min_vc = str(np.round(np.min(vc_list), 6))
-        best_model_iter = self.cfg['save_interval'] * min_arg_vc
-
-        best_model = './models/%s/nrange_%d_%d_iter_%d.ckpt' % (self.cfg['g_type'], self.cfg['NUM_MIN'], self.cfg['NUM_MAX'], best_model_iter)
-        return best_model, VCFile, min_vc
     
+
+    def PlayGame(self, int n_traj, double eps):
+        # print("Playing game!")
+        cdef int N_STEP = self.cfg['N_STEP']
+        self.Run_simulator(n_traj, eps, self.TrainSet, N_STEP)
+
+    def Run_simulator(self, int num_seq, double eps, TrainSet, int n_step):
+        # print("Running simulator...\n")
+        cdef int num_env = len(self.env_list)
+        cdef int n = 0
+        cdef int i
+        cdef int help_func = self.cfg['help_func']
+        # get intial sample
+        for i in range(num_env):
+            g_sample = TrainSet.Sample()
+            self.env_list[i].s0(g_sample)
+            
+            self.g_list[i] = self.env_list[i].graph
+            # print("Inserted graph!")
+            # print(self.g_list[i].EdgeWeight)
+            # self.env_list[i].step(0)
+        # num_seq is the number of full sequences starting at an initial state until termination
+        while n < num_seq:
+            for i in range(num_env):
+                # check whether terminal state is reached, if so add the graph to the graph list
+                # print("Checking for terminal state")
+                if self.env_list[i].isTerminal():
+                    n = n + 1
+                    # after reaching the terminal state add all nstep transitions to the replay memory 
+                    # print("adding new experience to the Replay buffer")
+                    self.nStepReplayMem.Add(self.env_list[i], n_step)
+                    # print("Sampling new graph..") 
+                    g_sample = TrainSet.Sample()
+                    self.env_list[i].s0(g_sample)
+                    self.g_list[i] = self.env_list[i].graph
+                    # self.env_list[i].step(0)
+                    # print("added new sample to the graph list, current length:", len(self.g_list))
+            if n >= num_seq:
+                break
+            Random = False
+            if random.uniform(0,1) >= eps:
+                # print("Making prediction")
+                pred = self.PredictWithCurrentQNet(self.g_list, [env.state for env in self.env_list])
+            else:
+                Random = True
+
+            for i in range(num_env):
+                if (Random):
+                    # print("Taking random action")
+                    a_t = self.env_list[i].randomAction()
+                else:
+                    a_t = self.argMax(pred[i])
+                # print("Making step")
+                self.env_list[i].step(a_t)
+            # print("Action lists:", [env.state for env in self.env_list])
+            # print("covered set:", [env.covered_set for env in self.env_list])
+            # print("reward sequence:", [env.reward_seq for env in self.env_list])
+            # print("Graph details:", self.g_list[0].num_nodes)
+
+
+    def TakeSnapShot(self):
+        # print("Taking snapshot")
+        self.session.run(self.UpdateTargetDQN)
     
+    def Update_TestDQN(self):
+        self.session.run(self.UpdateTestDQN)
+
     def Evaluate(self, g):
         # reset test set
         self.ClearTestGraphs()
@@ -1063,75 +957,14 @@ class FINDER:
         t2 = time.time()
         sol_time = (t2 - t1)
         return len, sol, sol_time
-
-
-    def LoadbestModel(self, num_min=None, num_max=None):
-        if not num_min:
-            num_min = self.cfg['NUM_MIN']
-        if not num_max:
-            num_max = self.cfg['NUM_MAX']
-        base_path = 'best_models/{}/'.format(self.cfg['g_type'])
-        best_tour_length = np.inf
-        # file_endings = ['ckpt', 'csv', 'pyx']
-        models = os.scandir(base_path)
-        for model in models:
-            # res = [ele for ele in file_endings if(ele in model)]
-            # check whether we have file or folder, continue in case of file
-            if model.is_file():
-                continue
-            new_base_path = base_path + model.name + '/'
-            for f in os.listdir(new_base_path):
-                nrange_str = 'nrange_{}_{}'.format(num_min, num_max)
-                if ('ckpt' not in f) or (nrange_str not in f):
-                    continue
-                f_len = f.split('_')[-1].split('.')[0]
-                tour_length = float(f_len)/(10**(len(f_len)-1))
-                if tour_length < best_tour_length:
-                    best_model_file = '.'.join(f.split('.')[0:-1])
-                    best_tour_length = tour_length
-        self.LoadModel(model_path=new_base_path+best_model_file)
-        return best_model_file.split('.')[-2]
     
-    
-    def gen_graph(self, num_min, num_max):
-        """
-        Generates new graphs of different g_type--> used for training or testing
-        """
-        cdef int max_n = num_max
-        cdef int min_n = num_min
-        cdef int cur_n = np.random.randint(max_n - min_n + 1) + min_n
-        if self.cfg['g_type'] == 'erdos_renyi':
-            g = nx.erdos_renyi_graph(n=cur_n, p=0.15)
-        elif self.cfg['g_type'] == 'powerlaw':
-            g = nx.powerlaw_cluster_graph(n=cur_n, m=4, p=0.05)
-        elif self.cfg['g_type'] == 'small-world':
-            g = nx.connected_watts_strogatz_graph(n=cur_n, k=8, p=0.1)
-        elif self.cfg['g_type'] == 'barabasi_albert':
-            g = nx.barabasi_albert_graph(n=cur_n, m=4)
-        elif self.cfg['g_type'] == 'tsp_2d':
-            # slow code, might need optimization
-            nodes = np.random.rand(cur_n,2)
-            edges = [(s[0],t[0],np.linalg.norm(s[1]-t[1])) for s,t in combinations(enumerate(nodes),2)]
-            g = nx.Graph()
-            g.add_weighted_edges_from(edges)
-            feature_dict = {k: {'coord': nodes[k]} for k in range(cur_n)} 
-            nx.set_node_attributes(g, feature_dict)
-        elif self.cfg['g_type'] == 'tsp':
-            # slow code, might need optimization
-            nodes = np.random.rand(cur_n, 2)
-            edges = [(s[0],t[0],np.linalg.norm(s[1]-t[1])) for s,t in combinations(enumerate(nodes),2)]
-            g = nx.Graph()
-            g.add_weighted_edges_from(edges)
-        return g
-
-
-    def gen_new_train_graphs(self, int num_min, int num_max, int num_graphs):
+    def generate_train_graphs(self, int num_min, int num_max, int num_graphs):
         print('\ngenerating new training graphs...')
         sys.stdout.flush()
         self.ClearTrainGraphs()
         cdef int i
         for i in tqdm(range(num_graphs)):
-            g = self.gen_graph(num_min, num_max)
+            g = utils.gen_graph(num_min, num_max, self.cfg['g_type'])
             self.InsertGraph(g, is_test=False)
     
     def PrepareValidData(self):
@@ -1171,7 +1004,7 @@ class FINDER:
             print('\nGenerating validation graphs...')
             sys.stdout.flush()
             for i in tqdm(range(n_valid)):
-                g = self.gen_graph(self.cfg['NUM_MIN'], self.cfg['NUM_MAX'])
+                g = utils.gen_graph(self.cfg['NUM_MIN'], self.cfg['NUM_MAX'])
                 self.InsertGraph(g, is_test=True)
 
     def GenNetwork(self, g):    #networkx2four
@@ -1217,7 +1050,6 @@ class FINDER:
         self.ngraph_train = 0
         self.TrainSet.Clear()
 
-
     def ClearTestGraphs(self):
         self.ngraph_test = 0
         self.TestSet.Clear()
@@ -1230,7 +1062,9 @@ class FINDER:
     def LoadModel(self, model_path):
         self.saver.restore(self.session, model_path)
         print('model sucessfully restored from file')
-
+    
+    def softmax(self, x):
+        return np.exp(x) / np.sum(np.exp(x))
 
     def argMax(self, scores):
         cdef int n = len(scores)
@@ -1242,7 +1076,6 @@ class FINDER:
                 pos = i
                 best = scores[i]
         return pos
-
 
     def Max(self, scores):
         cdef int n = len(scores)
