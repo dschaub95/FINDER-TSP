@@ -29,20 +29,21 @@ import tsplib95
 
 np.set_printoptions(threshold=sys.maxsize)
 # fix seeds for graph generation and weight init
-tf.set_random_seed(73)
-random.seed(7)
-np.random.seed(42)
+# tf.set_random_seed(73)
+# random.seed(7)
+# np.random.seed(42)
 
 cdef double inf = 1073741823.5
 
 class FINDER:
     
-    def __init__(self, config, train_config_path=None, test_config_path=None):
-        
+    def __init__(self, config):
+        print("Gpu available:", tf.test.is_gpu_available())
+        print("Built with cuda:", tf.test.is_built_with_cuda())
         self.cfg = config
         
         self.print_params = True
-        self.print_test_prediction = True
+        self.print_test_results = True
         
         # explicitly define some variables for speed up
         cdef int MEMORY_SIZE = self.cfg['MEMORY_SIZE']
@@ -135,13 +136,6 @@ class FINDER:
                 self.state_embed_test = self.BuildAGNN_state_encoder(self.placeholder_dict['node_embed_input'])
 
                 self.q_on_all_test, temp_weights = self.BuildAGNN_decoder(self.placeholder_dict['node_embed_input'], self.state_embed_test, repeat_states=True)
-            
-            # self.encoder_params = [param for param in tf.compat.v1.trainable_variables(scope='test_DQN') if 'encoder' in param.name]
-            # print("Encoder params", [tensor.name for tensor in self.encoder_params])
-            # self.state_encoder_params = tf.compat.v1.trainable_variables(scope='test_DQN/state_encoder')
-            # print("State encoder params", [tensor.name for tensor in self.state_encoder_params])
-            # self.decoder_params = tf.compat.v1.trainable_variables(scope='test_DQN/decoder')
-            # print("Decoder params", [tensor.name for tensor in self.decoder_params])
         
             self.test_DQN_params = tf.compat.v1.trainable_variables(scope='test_DQN')
             # print("Test DQN params", [tensor.name for tensor in self.test_DQN_params])
@@ -287,7 +281,6 @@ class FINDER:
             whole_seq_output, final_memory_state, final_carry_state = RNN_layer(masked_covered_embed)
             cur_state_embed = final_carry_state
 
-        cur_state_embed = tf.cond(self.placeholder_dict['is_training'], lambda: tf.nn.dropout(cur_state_embed, rate=self.cfg['dropout_rate']), lambda: cur_state_embed)
         if self.cfg['focus_start_end_node']:
             # [batch_size, node_embed_dim], explitcitly extract the start and end node embeddings
             start_node_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['start_param'], tf.float32), cur_node_embed)
@@ -388,25 +381,36 @@ class FINDER:
         self.Update_TestDQN()
         
         #save_dir = './models/%s'%self.cfg['g_type']
-        save_dir = './models/{}'.format(self.cfg['g_type'])
+        save_dir = './models/{}/nrange_{}_{}'.format(self.cfg['g_type'], NUM_MIN, NUM_MAX)
+        ckpt_save_dir = f'{save_dir}/checkpoints'
+        architecture_save_dir = f'{save_dir}/architecture'
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
-        VCFile = '%s/ModelVC_%d_%d.csv'%(save_dir, NUM_MIN, NUM_MAX)
+        valid_file = f'{save_dir}/Validation_{NUM_MIN}_{NUM_MAX}.csv'
         LossFile = f'{save_dir}/Loss_{NUM_MIN}_{NUM_MAX}.csv'
-        valid_approx_out = open(VCFile, 'w')
+        valid_approx_out = open(valid_file, 'w')
         loss_out = open(LossFile, 'w')
         for iter in range(MAX_ITERATION):
-            print("Iteration: ", iter)
             start = time.clock()
             ###########-----------------------normal training data setup(start) -----------------##############################
             if iter and iter % 5000 == 0:
                 print("generating new traning graphs")
                 self.generate_train_graphs(NUM_MIN, NUM_MAX, n_generator)
             eps = eps_end + max(0., (eps_start - eps_end) * (eps_step - iter) / eps_step)
-            print("Epsilon:", eps)
+            
             if iter % 10 == 0:
                 self.PlayGame(10, eps)
+            if iter % self.cfg['UPDATE_TIME'] == 0:
+                self.TakeSnapShot()
+            # print("Fitting in 5 seconds...")
+            # time.sleep(5)
+            loss = self.Fit()
+            if iter % 10 == 0:
+                loss_out.write(f'{iter} {loss}\n')
+                loss_out.flush()
+            # testing
             if iter % self.cfg['save_interval'] == 0:
+                os.system('clear')
                 if(iter == 0):
                     N_start = start
                 else:
@@ -433,25 +437,19 @@ class FINDER:
                 print ('testing %d graphs time: %.2fs'%(self.cfg['n_valid'], test_end-test_start))
                 N_end = time.clock()
                 print ('%d iterations total time: %.2fs\n'%(self.cfg['save_interval'], N_end-N_start))
+                print(f"Loss: {loss}")
                 sys.stdout.flush()
-                model_path = '%s/nrange_%d_%d_iter_%d.ckpt' % (save_dir, NUM_MIN, NUM_MAX, iter)
+                model_path = f'{ckpt_save_dir}/nrange_{NUM_MIN}_{NUM_MAX}_iter_{iter}.ckpt'
+                if not os.path.exists(ckpt_save_dir):
+                    os.makedirs(ckpt_save_dir)
                 self.SaveModel(model_path)
-            if iter % self.cfg['UPDATE_TIME'] == 0:
-                self.TakeSnapShot()
-            # print("Fitting in 5 seconds...")
-            # time.sleep(5)
-            loss = self.Fit()
-            print('Loss', loss)
-            if iter % 10 == 0:
-                loss_out.write(f'{iter} {loss}\n')
-                loss_out.flush()
             self.writer.flush()
         valid_approx_out.close()
         loss_out.close()
         self.writer.close()
 
 
-    def Test(self, int gid, print_out=True):
+    def Test(self, int gid):
         graph = self.TestSet.Get(gid)
 
         if self.cfg['search_strategy'] == 'beam_search+':
@@ -460,7 +458,7 @@ class FINDER:
             sol = self.solve_with_beam_search(graph=graph, select_true_best=False)
         else:
             # select greedy
-            if print_out and gid == 0:
+            if self.print_test_results and gid == 0:
                 verbose = True
             else:
                 verbose = False
@@ -471,7 +469,7 @@ class FINDER:
         #     self.test_env.stepWithoutReward(action)
         # assert(self.test_env.isTerminal())
         # sol = self.test_env.state
-        if print_out and gid == 0:
+        if self.print_test_results and gid == 0:
             print(sol)
         nodes = list(range(graph.num_nodes))
         solution = sol + list(set(nodes)^set(sol))
@@ -514,7 +512,6 @@ class FINDER:
         # can be easily batched
         for test_env in self.test_env_list:
             test_env.s0(graph)
-        # first node is always zero
         beam_width = self.cfg['beam_width']
         num_nodes = graph.num_nodes
         sequences = [[self.test_env_list[0], [], 1]]
@@ -526,12 +523,12 @@ class FINDER:
             #     isTerminal = True
             #     break
             all_candidates = []
-            # expand each current candidate
+            # expand each current candidate 
+            env_states = [sequence[0].state for sequence in sequences]
+            g_list = [graph for i in range(beam_width)]
             for i in range(len(sequences)):
                 cur_env, cur_act, cur_score = sequences[i]
-                # make predictions based on current sequence
-                possible_actions = [n for n in range(0,num_nodes) if n not in cur_env.state]
-
+                # make predictions based on current sequence, this needs to be batched
                 if self.cfg['one_step_encoding']:
                     # only encode in the first step
                     if step == 0:
@@ -540,9 +537,11 @@ class FINDER:
                         q_values = self.Predict([graph], [cur_env.state], isSnapShot=False, initPred=False, test=True)
                 else:
                     q_values = self.Predict([graph], [cur_env.state], isSnapShot=False, initPred=False, test=False)
+                
                 probabilities = self.softmax(q_values[0])
                 # print("Qvalues", q_values[0])
                 # print("probabilities", probabilities)
+                possible_actions = [n for n in range(0,num_nodes) if n not in cur_env.state]
                 for action in possible_actions:
                     candidate = [cur_env, cur_act + [action], cur_score * probabilities[action]]
                     all_candidates.append(candidate)
@@ -854,7 +853,7 @@ class FINDER:
         cdef int n_graphs = len(g_list)
         cdef int i, j
         cdef int bsize = self.cfg['BATCH_SIZE']
-        print("Fitting in total:", n_graphs, "graphs.")
+        # print("Fitting in total:", n_graphs, "graphs.")
         for i in range(0, n_graphs, bsize):
             if (i + bsize) > n_graphs:
                 bsize = n_graphs - i
@@ -873,10 +872,10 @@ class FINDER:
             my_dict = {}
             for key in self.inputs:
                 my_dict[self.placeholder_dict[key]] = self.inputs[key]
-            print("running training session...")
+            # print("running training session...")
             result = self.session.run([self.loss, self.trainStep], feed_dict=my_dict)
             # result = self.session.run([self.trainStep], feed_dict=my_dict)
-            print("sucessfully ran training session")
+            # print("sucessfully ran training session")
             loss += result[0]*bsize
             
         return loss / n_graphs
@@ -953,7 +952,8 @@ class FINDER:
         self.ClearTestGraphs()
         self.InsertGraph(g, is_test=True)
         t1 = time.time()
-        len, sol = self.Test(0, print_out=False)
+        self.print_test_results = False
+        len, sol = self.Test(0)
         t2 = time.time()
         sol_time = (t2 - t1)
         return len, sol, sol_time
