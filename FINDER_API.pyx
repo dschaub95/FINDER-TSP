@@ -1,12 +1,15 @@
-from FINDER import FINDER
 import numpy as np
 import os
 import time
 from shutil import copy
 from distutils.util import strtobool
 from tqdm import tqdm
-import tensorflow as tf
-tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+
+from FINDER import FINDER
+# fix seeds for graph generation and weight init
+# tf.set_random_seed(73)
+# random.seed(7)
+# np.random.seed(42)
 
 # test and evaluation functionalities or basically any interaction with FINDER in here
 
@@ -43,10 +46,10 @@ def read_config(config_path):
 
 
 class FINDER_API:
-    def __init__(self, train_config_path=None):
+    def __init__(self, config_path=None):
         # read input config
-        config = read_config(train_config_path)
-
+        config = read_config(config_path)
+        self.config_path = config_path
         # initialize FINDER config with default values
         self.cfg = dict()
         
@@ -154,13 +157,43 @@ class FINDER_API:
                 print("Using default value {} instead!".format(self.cfg[key]))
         self.DQN = FINDER(config=self.cfg)
 
-    def train(self):
+    def train(self, save_config=True, save_architecture=True):
+        if save_config:
+            self.save_cur_config()
+        if save_architecture:  
+            self.save_architecture()
         self.DQN.Train()
 
-    def load_model(self, model_path):
-        self.DQN.LoadModel(self, model_path)
+    def save_cur_config(self):
+        g_type = self.cfg['g_type']
+        NUM_MIN = self.cfg['NUM_MIN']
+        NUM_MAX = self.cfg['NUM_MAX']
+        config_file = 'current_config.txt'
+        config_save_dir = f'models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}'
+        try:
+            copy(self.config_path, f'{config_save_dir}/{config_file}')
+        except:
+            print("Error when saving current config file!")
+    
+    def save_architecture(self):
+        g_type = self.cfg['g_type']
+        NUM_MIN = self.cfg['NUM_MIN']
+        NUM_MAX = self.cfg['NUM_MAX']
+        architecture_save_dir = f'models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}/architecture'
+        self.create_dir(architecture_save_dir)
+        architecture_paths = ['.', '.', '.', 'src/lib', 'src/lib']
+        architecture_files = ['FINDER.pyx', 'PrepareBatchGraph.pyx', 'PrepareBatchGraph.pxd', 'PrepareBatchGraph.cpp', 'PrepareBatchGraph.h']
+        for k, a_file in enumerate(architecture_files):
+            a_path = architecture_paths[k]
+            try:
+                copy(f'{a_path}/{a_file}', f'{architecture_save_dir}/{a_file}')
+            except:
+                print(f"Error when saving current architecture file {a_file}!")
 
-    def run_test(self, dqn, graph_list):
+    def load_model(self, ckpt_path):
+        self.DQN.LoadModel(ckpt_path)
+
+    def run_test(self, graph_list):
         lengths = []
         solutions = []
         sol_times = []
@@ -176,7 +209,75 @@ class FINDER_API:
         self.DQN.ClearTestGraphs()
         self.DQN.InsertGraph(graph, is_test=True)
         t1 = time.time()
-        len, sol = self.DQN.Test(0, print_out=False)
+        self.DQN.print_test_results = False
+        len, sol = self.DQN.Test(0)
         t2 = time.time()
         sol_time = (t2 - t1)
         return len, sol, sol_time
+
+    def save_train_results(self, model_name='', save_architecture=True):
+        g_type = self.cfg['g_type']
+        NUM_MIN = self.cfg['NUM_MIN']
+        NUM_MAX = self.cfg['NUM_MAX']
+        
+        checkpoint_suffixes = ['data-00000-of-00001', 'index', 'meta']
+        base_path = f'./models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}'
+        valid_file = f'Validation_{NUM_MIN}_{NUM_MAX}.csv'
+        valid_file_path = f'{base_path}/{valid_file}'
+        
+        valid_ratios = [float(line.split(' ')[1]) for line in open(valid_file_path)]
+        iterations = [int(line.split(' ')[0]) for line in open(valid_file_path)]
+
+        min_tour_length = ''.join(str(min(valid_ratios)).split('.'))
+        
+        save_dir = f'./saved_models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}/{model_name}_len_{min_tour_length}'
+        self.create_dir(save_dir)
+
+        print("Saving validation file...")
+        copy(valid_file_path, f'{save_dir}/{valid_file}')
+        
+        print("Saving Loss file...")
+        loss_file = f'Loss_{NUM_MIN}_{NUM_MAX}.csv'
+        copy(f'{base_path}/{loss_file}', f'{save_dir}/{loss_file}')
+        
+        print("Saving all checkpoint files...")
+        ckpt_save_dir = f'{save_dir}/checkpoints'
+        self.create_dir(ckpt_save_dir)
+        for iter in iterations:
+            self.save_checkpoint_files(ckpt_save_dir, iter)
+        
+        print("Saving best checkpoint file seperately...")
+        best_ckpt_save_dir = f'{save_dir}/best_checkpoint'
+        self.create_dir(best_ckpt_save_dir)
+        min_idx = np.argmin(valid_ratios)
+        min_iter = iterations[min_idx]
+        self.save_checkpoint_files(best_ckpt_save_dir, min_iter)
+        
+        print("Saving config file...")
+        config_file = 'current_config.txt'
+        copy(f'{base_path}/{config_file}', f'{save_dir}/config.txt')
+
+        if save_architecture:
+            architecture_save_dir = f'{save_dir}/architecture'
+            self.create_dir(architecture_save_dir)
+            print('Saving FINDER.pyx, PrepareBatchGraph.pyx, PrepareBatchGraph.pxd, PrepareBatchGraph.h, PrepareBatchGraph.cpp...')
+            architecture_files = ['FINDER.pyx', 'PrepareBatchGraph.pyx', 'PrepareBatchGraph.pxd', 'PrepareBatchGraph.cpp', 'PrepareBatchGraph.h']
+            for a_file in architecture_files:
+                copy(f'{base_path}/architecture/{a_file}', f'{architecture_save_dir}/{a_file}')
+    
+
+    def save_checkpoint_files(self, ckpt_save_dir, iter):
+        g_type = self.cfg['g_type']
+        NUM_MIN = self.cfg['NUM_MIN']
+        NUM_MAX = self.cfg['NUM_MAX']
+        checkpoint_suffixes = ['data-00000-of-00001', 'index', 'meta']
+        for suffix in checkpoint_suffixes:
+            ckpt_name = f'nrange_{NUM_MIN}_{NUM_MAX}_iter_{iter}.ckpt.{suffix}'
+            ckpt_path = f'./models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}/checkpoints/{ckpt_name}'
+            copy(ckpt_path, f'{ckpt_save_dir}/{ckpt_name}')
+    
+    def create_dir(self, save_dir):
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+
+    
