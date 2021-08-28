@@ -4,9 +4,12 @@
 from __future__ import print_function, division
 
 import tensorflow as tf
+tf.compat.v1.set_random_seed(73)
 import numpy as np
-import networkx as nx
+np.random.seed(42)
 import random
+random.seed(7)
+
 import scipy.linalg as linalg
 from scipy.sparse import csr_matrix
 from itertools import combinations
@@ -230,7 +233,7 @@ class FINDER:
             node_linear_1 = tf.matmul(cur_node_embed, U[lv])
             new_node_embed = tf.math.add(node_linear_1, new_node_embed)
             
-            norm_layer_0 = tf.keras.layers.LayerNormalization()
+            norm_layer_0 = tf.keras.layers.LayerNormalization(axis=1)
             new_node_embed = tf.reshape(new_node_embed, [-1, node_embed_dim])
             new_node_embed = norm_layer_0(new_node_embed)
             new_node_embed = tf.nn.relu(new_node_embed)
@@ -250,7 +253,7 @@ class FINDER:
             sum_edge_embed = tf.math.add(tmp_n2e_0, tmp_n2e_1)
             sum_edge_embed = tf.math.add(sum_edge_embed, tmp_edge_embed)
             
-            norm_layer_1 = tf.keras.layers.LayerNormalization()
+            norm_layer_1 = tf.keras.layers.LayerNormalization(axis=1)
             new_edge_embed = tf.reshape(sum_edge_embed, [-1, edge_embed_dim])
             new_edge_embed = norm_layer_1(new_edge_embed)
             new_edge_embed = tf.nn.relu(new_edge_embed)
@@ -519,31 +522,28 @@ class FINDER:
         cdef int step = 0
         isTerminal = False
         while not self.test_env_list[0].isTerminal():
-            # if self.test_env_list[0].isTerminal():
-            #     isTerminal = True
-            #     break
             all_candidates = []
             # expand each current candidate 
             env_states = [sequence[0].state for sequence in sequences]
-            g_list = [graph for i in range(beam_width)]
-            for i in range(len(sequences)):
-                cur_env, cur_act, cur_score = sequences[i]
-                # make predictions based on current sequence, this needs to be batched
-                if self.cfg['one_step_encoding']:
-                    # only encode in the first step
-                    if step == 0:
-                        q_values = self.Predict([graph], [cur_env.state], isSnapShot=False, initPred=True, test=True)     
-                    else:
-                        q_values = self.Predict([graph], [cur_env.state], isSnapShot=False, initPred=False, test=True)
+            g_list = [graph for sequence in sequences]
+            if self.cfg['one_step_encoding']:
+                # only encode in the first step
+                if step == 0:
+                    list_pred = self.Predict(g_list, env_states, isSnapShot=False, initPred=True, test=True)     
                 else:
-                    q_values = self.Predict([graph], [cur_env.state], isSnapShot=False, initPred=False, test=False)
+                    list_pred = self.Predict(g_list, env_states, isSnapShot=False, initPred=False, test=True)
+            else:
+                list_pred = self.Predict(g_list, env_states, isSnapShot=False, initPred=False, test=False)
                 
-                probabilities = self.softmax(q_values[0])
+            
+            probabilities_list = [self.softmax(q_values) for q_values in list_pred]
                 # print("Qvalues", q_values[0])
                 # print("probabilities", probabilities)
-                possible_actions = [n for n in range(0,num_nodes) if n not in cur_env.state]
+            for i in range(len(sequences)):    
+                cur_env, cur_act, cur_score = sequences[i]
+                possible_actions = [n for n in range(0,num_nodes) if n not in env_states[i]]
                 for action in possible_actions:
-                    candidate = [cur_env, cur_act + [action], cur_score * probabilities[action]]
+                    candidate = [cur_env, cur_act + [action], cur_score * probabilities_list[i][action]]
                     all_candidates.append(candidate)
             # order all candidates by score
             ordered = sorted(all_candidates, key=lambda tup:tup[2], reverse=True)
@@ -582,6 +582,14 @@ class FINDER:
         return result
     
     def Predict(self, g_list, covered, isSnapShot, initPred=True, test=False):
+        # for i in range(0, beam_width, bbsize):
+        #     if i + bbsize <= beam_width:
+        #         end_idx = i + bbsize
+        #     else:
+        #         end_idx = bbsize
+        #     batch_g_list = g_list[i:end_idx]
+        #     batch_env_states = env_states[i]
+        
         # print("Running Predict")
         cdef int n_graphs = len(g_list)
         cdef int i, j, k, bsize

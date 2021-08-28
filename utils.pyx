@@ -9,8 +9,6 @@ import networkx as nx
 import numpy as np
 from itertools import combinations
 
-np.random.seed(42)
-
 cdef class py_Utils:
     cdef shared_ptr[Utils] inner_Utils
     cdef shared_ptr[Graph] inner_Graph
