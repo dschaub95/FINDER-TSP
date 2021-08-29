@@ -1,5 +1,3 @@
-train_configs/**
-
 models/**
 !models/.gitkeep
 
