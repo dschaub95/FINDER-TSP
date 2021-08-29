@@ -9,7 +9,7 @@ import networkx as nx
 import numpy as np
 from itertools import combinations
 
-cdef class py_Utils:
+cdef class pyx_Utils:
     cdef shared_ptr[Utils] inner_Utils
     cdef shared_ptr[Graph] inner_Graph
     def __cinit__(self):
@@ -56,35 +56,3 @@ def gen_graph(num_min, num_max, g_type):
         g = nx.Graph()
         g.add_weighted_edges_from(edges)
     return g
-
-
-def read_config(config_path):
-    with open(config_path) as f:
-        data = f.read()
-    data = data.replace(" ", "").split('\n')
-    data = [element for element in data if not len(element) == 0]
-    # delete comment lines
-    data = [element for element in data if not element[0] == '#']
-    # ignore inline comments
-    data = [element.split('#')[0] for element in data]
-    # delete string literals
-    data = [element.replace("'", "") for element in data]
-    data_dict = dict(substr.split('=') for substr in data)
-    # conversion to correct data type
-    for key in data_dict:
-        if '.' in data_dict[key]:
-            # conversion to float
-            try:
-                data_dict[key] = float(data_dict[key])
-            except:
-                pass
-        else:
-            # conversion to int or boolean int (0,1)
-            try:
-                data_dict[key] = int(data_dict[key])
-            except:
-                try:
-                    data_dict[key] = strtobool(data_dict[key])
-                except:
-                    pass
-    return data_dict

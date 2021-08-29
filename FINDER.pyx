@@ -58,7 +58,7 @@ class FINDER:
         self.TrainSet = graph.py_GSet() # initializes the training and test set object
         self.TestSet = graph.py_GSet()
         self.inputs = dict()
-        self.utils = utils.py_Utils()
+        self.utils = utils.pyx_Utils()
         
         self.ngraph_train = 0
         self.ngraph_test = 0
