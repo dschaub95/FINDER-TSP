@@ -1,0 +1,10 @@
+cython
+networkx
+numpy==1.17.3
+pandas
+scipy
+tensorflow-gpu==1.14.0
+tqdm
+tsplib95
+jupyter
+notebook

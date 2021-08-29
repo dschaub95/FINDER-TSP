@@ -136,7 +136,7 @@ void Memory::Add(std::shared_ptr<MvcEnv> env,int n_step)
         if (i + n_step >= num_steps)
         {
             cur_r = env->sum_rewards[i];
-            s_prime = (env->action_list);
+            s_prime = (env->state);
             term_t = true;
         } else {
             cur_r = env->sum_rewards[i] - env->sum_rewards[i + n_step];

@@ -10,7 +10,11 @@
 class MvcEnv
 {
 public:
+    MvcEnv();
+
     MvcEnv(double _norm, int _help_func, int _sign);
+
+    MvcEnv(std::shared_ptr<MvcEnv> mvc_env);
 
     ~MvcEnv();
 
@@ -46,7 +50,7 @@ public:
 
     std::vector< std::vector<int> > state_seq;
 
-    std::vector<int> act_seq, action_list;
+    std::vector<int> act_seq, state;
 
     std::vector<double> reward_seq, sum_rewards;
 

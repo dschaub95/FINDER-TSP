@@ -1,17 +1,25 @@
-train_configs/**
-
 models/**
+!models/.gitkeep
 
 best_models/**
 !best_models/.gitkeep
 
+saved_models/**
+!saved_models/.gitkeep
+
+results/**
+!results/.gitkeep
+
 plots/*
 !plots/.gitkeep
 
-test_sets
-valid_sets
 data/*
 !data/.gitkeep
+data/valid_sets
+data/test_sets
+!data/valid_sets/.gitkeep
+!data/test_sets/.gitkeep
+
 graphs/**
 !graphs/.gitkeep
 
@@ -28,7 +36,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-results
 
 # C extensions
 *.so

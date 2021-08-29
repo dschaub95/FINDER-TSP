@@ -266,7 +266,7 @@ cdef class py_Memory:
         deref(self.inner_MvcEnv).graph = self.inner_Graph
         deref(self.inner_MvcEnv).state_seq = mvcenv.state_seq
         deref(self.inner_MvcEnv).act_seq = mvcenv.act_seq
-        deref(self.inner_MvcEnv).action_list = mvcenv.action_list
+        deref(self.inner_MvcEnv).state = mvcenv.state
         deref(self.inner_MvcEnv).reward_seq = mvcenv.reward_seq
         deref(self.inner_MvcEnv).sum_rewards = mvcenv.sum_rewards
         deref(self.inner_MvcEnv).numCoveredEdges = mvcenv.numCoveredEdges
