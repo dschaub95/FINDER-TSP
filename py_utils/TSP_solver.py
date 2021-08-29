@@ -1,6 +1,6 @@
 from itertools import permutations
 import numpy as np
-from TSP_loader import TSP_loader
+from py_utils.TSP_loader import TSP_loader
 
 class TSP_solver:
     def __init__(self) -> None:
