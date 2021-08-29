@@ -4,6 +4,7 @@ import time
 from shutil import copy
 from distutils.util import strtobool
 from tqdm import tqdm
+from datetime import datetime
 
 from FINDER import FINDER
 # fix seeds for graph generation and weight init
@@ -219,7 +220,8 @@ class FINDER_API:
         g_type = self.cfg['g_type']
         NUM_MIN = self.cfg['NUM_MIN']
         NUM_MAX = self.cfg['NUM_MAX']
-        
+        dt_string = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+
         checkpoint_suffixes = ['data-00000-of-00001', 'index', 'meta']
         base_path = f'./models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}'
         valid_file = f'Validation_{NUM_MIN}_{NUM_MAX}.csv'
@@ -228,9 +230,9 @@ class FINDER_API:
         valid_ratios = [float(line.split(' ')[1]) for line in open(valid_file_path)]
         iterations = [int(line.split(' ')[0]) for line in open(valid_file_path)]
 
-        min_tour_length = ''.join(str(min(valid_ratios)).split('.'))
+        min_tour_length = ''.join(str(np.round(min(valid_ratios), 5)).split('.'))
         
-        save_dir = f'./saved_models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}/{model_name}_len_{min_tour_length}'
+        save_dir = f'./saved_models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}/{model_name}_{dt_string}_len_{min_tour_length}'
         self.create_dir(save_dir)
 
         print("Saving validation file...")
