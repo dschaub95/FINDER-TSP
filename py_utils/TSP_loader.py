@@ -2,22 +2,33 @@ import os
 import networkx as nx
 import tsplib95
 import re
+from tqdm import tqdm
 import numpy as np
 
 class TSP_loader:
     def __init__(self) -> None:
         pass
     
-    def load_multi_tsp_as_nx(self, data_dir, scale_factor=0.0001):
+    def load_multi_tsp_as_nx(self, data_dir, scale_factor=0.000001, start_index=0, end_index=50000):
         atoi = lambda text : int(text) if text.isdigit() else text
         natural_keys = lambda text : [atoi(c) for c in re.split('(\d+)', text)]
-        fnames = os.listdir(data_dir)
-        fnames.sort(key=natural_keys)
         graph_list = []
-        for fname in fnames:
-            if not 'tsp' in fname:
+        try:
+            fnames = [f for f in os.listdir(data_dir) if os.path.isfile(f'{data_dir}/{f}')]
+            fnames.sort(key=natural_keys)
+        except:
+            print('\nBad TSP directory!')
+            return graph_list
+        fnames = [fname for fname in fnames if 'tsp' in fname]
+        if end_index > len(fnames):
+            end_index = len(fnames)
+        for fname in tqdm(fnames[start_index:end_index]):
+            index = int(fname.split('.')[0].split('_')[-1])
+            if index < start_index:
                 continue
-            g = self.load_tsp_as_nx(data_dir+fname, scale_factor=scale_factor)
+            if index > end_index:
+                continue
+            g = self.load_tsp_as_nx(f'{data_dir}/{fname}', scale_factor=scale_factor)
             graph_list.append(g)
         return graph_list
 

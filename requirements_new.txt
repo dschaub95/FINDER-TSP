@@ -8,3 +8,7 @@ tqdm
 tsplib95
 jupyter
 notebook
+tensorboardX
+sklearn
+matplotlib
+fastprogress
