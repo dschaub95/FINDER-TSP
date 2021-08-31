@@ -135,8 +135,8 @@ cdef class py_MvcEnv:
         node_feats = graph1.node_feats
         EdgeWeight = graph1.EdgeWeight
 
-        cint_edges_from = np.zeros([num_edges],dtype=np.int)
-        cint_edges_to = np.zeros([num_edges],dtype=np.int)
+        cint_edges_from = np.zeros([num_edges],dtype=np.int32)
+        cint_edges_to = np.zeros([num_edges],dtype=np.int32)
         cdouble_vec_node_feats = np.zeros([num_nodes, 2], dtype=np.double)
         cdouble_EdgeWeight = np.zeros([num_nodes, num_nodes], dtype=np.double)
         # print(num_nodes)
