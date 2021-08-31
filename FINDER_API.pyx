@@ -1,4 +1,5 @@
 import numpy as np
+np.random.seed(42)
 import os
 import time
 from shutil import copy
@@ -92,6 +93,8 @@ class FINDER_API:
         self.cfg['NUM_MAX'] = 20
         self.cfg['NN_ratio'] = 1.0
         self.cfg['n_generator'] = 1000
+        self.cfg['train_path'] = 'data/train_sets/synthetic_n_20_50000'
+        self.cfg['train_scale_fac'] = 0.000001
 
         # Decoder hyperparameters
         self.cfg['decoder'] = 0
@@ -111,10 +114,11 @@ class FINDER_API:
         self.cfg['eps_step'] = 10000.0
         self.cfg['MEMORY_SIZE'] = 150000
         self.cfg['one_step_encoding'] = 0
+        self.cfg['use_edge_probs'] = 1
 
         # validation set info
         self.cfg['valid_path'] = 'valid_sets/synthetic_nrange_15_20_200/'
-        self.cfg['valid_scale_fac'] = 0.0001
+        self.cfg['valid_scale_fac'] = 0.000001
         self.cfg['n_valid'] = 200
 
         # (hyper)parameters for prioritized replay sampling

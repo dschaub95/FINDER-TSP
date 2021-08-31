@@ -21,13 +21,16 @@ import pickle as cp
 import sys
 import os
 import re
+import gc
 
 import PrepareBatchGraph
 import graph
 import nstep_replay_mem
 import nstep_replay_mem_prioritized
 import mvc_env
-import utils
+import pyx_utils
+from py_utils.TSP_loader import TSP_loader
+from attgcn_api import ATTGCN_API
 import tsplib95
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -58,8 +61,10 @@ class FINDER:
         self.TrainSet = graph.py_GSet() # initializes the training and test set object
         self.TestSet = graph.py_GSet()
         self.inputs = dict()
-        self.utils = utils.pyx_Utils()
-        
+        self.utils = pyx_utils.pyx_Utils()
+        self.tsp_loader = TSP_loader()
+        self.graph_preprocessor = ATTGCN_API()
+
         self.ngraph_train = 0
         self.ngraph_test = 0
         self.env_list=[]
@@ -98,15 +103,6 @@ class FINDER:
         if self.cfg['IsPrioritizedSampling']:
             self.ISWeights = tf.placeholder(tf.float32, [self.cfg['BATCH_SIZE'], 1], name='IS_weights')
 
-        if self.cfg['net_type'] == 'S2VDQN':
-            # overwrite config
-            self.cfg['selected_nodes_inclusion'] = 2
-            self.cfg['ignore_covered_edges'] = 1
-            self.cfg['embeddingMethod'] = 3 # makes sure all relevant aggregation matrices are calculated
-            # init Q network
-            self.loss, self.trainStep, self.q_pred, self.q_on_all, self.Q_param_list = self.Build_S2VDQN() #[loss,trainStep,q_pred, q_on_all, ...]
-            #init Target Q Network
-            self.lossT, self.trainStepT, self.q_predT, self.q_on_allT, self.Q_param_listT = self.Build_S2VDQN()
         if self.cfg['net_type'] == 'AGNN':
             assert(self.cfg['REG_HIDDEN'] > 0)
             self.cfg['embeddingMethod'] = 3 # makes sure all relevant aggregation matrices are calculated
@@ -148,16 +144,18 @@ class FINDER:
             self.target_DQN_params = tf.compat.v1.trainable_variables(scope='target_DQN')
             self.UpdateTargetDQN = tf.group(*[a.assign(b) for a,b in zip(self.target_DQN_params, self.Q_param_list)])
         else:
+           # overwrite config
+            self.cfg['selected_nodes_inclusion'] = 2
+            self.cfg['ignore_covered_edges'] = 1
+            self.cfg['embeddingMethod'] = 3 # makes sure all relevant aggregation matrices are calculated
             # init Q network
-            self.loss, self.trainStep, self.q_pred, self.q_on_all, self.Q_param_list, self.tensor_list = self.BuildNet() #[loss,trainStep,q_pred, q_on_all, ...]
+            self.loss, self.trainStep, self.q_pred, self.q_on_all, self.Q_param_list = self.Build_S2VDQN() #[loss,trainStep,q_pred, q_on_all, ...]
             #init Target Q Network
-            self.lossT, self.trainStepT, self.q_predT, self.q_on_allT, self.Q_param_listT, self.tensor_list = self.BuildNet()
+            self.lossT, self.trainStepT, self.q_predT, self.q_on_allT, self.Q_param_listT = self.Build_S2VDQN()
+            #takesnapsnot
+            self.copyTargetQNetworkOperation = [a.assign(b) for a,b in zip(self.Q_param_listT, self.Q_param_list)]
+            self.UpdateTargetDQN = tf.group(*self.copyTargetQNetworkOperation)
 
-        #takesnapsnot
-        # self.copyTargetQNetworkOperation = [a.assign(b) for a,b in zip(self.Q_param_listT, self.Q_param_list)]
-
-        # self.UpdateTargetDQN = tf.group(*self.copyTargetQNetworkOperation)
-        
         # saving and loading networks
         self.saver = tf.compat.v1.train.Saver(max_to_keep=None)
         #self.session = tf.InteractiveSession()
@@ -166,6 +164,7 @@ class FINDER:
                                 intra_op_parallelism_threads=100,
                                 log_device_placement=False)
         config.gpu_options.allow_growth = True
+        config.gpu_options.per_process_gpu_memory_fraction = 0.6
         self.session = tf.Session(config=config)
 
         # self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
@@ -368,13 +367,15 @@ class FINDER:
         self.PrepareValidData()
         try:
             valid_lengths = None
-            with open(self.cfg['valid_path']+'lengths.txt', 'r') as f:
+            valid_path = self.cfg['valid_path']
+            with open(f'{valid_path}/lengths.txt', 'r') as f:
                 lines = f.readlines()
                 lines = [float(line.split(':')[-1].strip()) for line in lines]
             valid_lengths = lines
         except:
             print("Could not load validation lengths!")
-        self.generate_train_graphs(NUM_MIN, NUM_MAX, n_generator)
+        self.num_train_prep_cycles = 0
+        self.prepare_new_training_graphs()
 
         
         for i in range(10):
@@ -397,8 +398,7 @@ class FINDER:
             start = time.clock()
             ###########-----------------------normal training data setup(start) -----------------##############################
             if iter and iter % 5000 == 0:
-                print("generating new traning graphs")
-                self.generate_train_graphs(NUM_MIN, NUM_MAX, n_generator)
+                self.prepare_new_training_graphs()
             eps = eps_end + max(0., (eps_start - eps_end) * (eps_step - iter) / eps_step)
             
             if iter % 10 == 0:
@@ -420,7 +420,7 @@ class FINDER:
                     N_start = N_end
                 frac = 0.0
                 self.Update_TestDQN()
-                print("Running test...")
+                tqdm.write("Running test...")
                 test_start = time.time()
                 for idx in tqdm(range(n_valid)):
                     if valid_lengths:
@@ -958,7 +958,7 @@ class FINDER:
     def Evaluate(self, g):
         # reset test set
         self.ClearTestGraphs()
-        self.InsertGraph(g, is_test=True)
+        self.InsertGraphs([g], is_test=True)
         t1 = time.time()
         self.print_test_results = False
         len, sol = self.Test(0)
@@ -966,60 +966,101 @@ class FINDER:
         sol_time = (t2 - t1)
         return len, sol, sol_time
     
-    def generate_train_graphs(self, int num_min, int num_max, int num_graphs):
-        print('\ngenerating new training graphs...')
-        sys.stdout.flush()
+    def prepare_new_training_graphs(self):
+        cdef int NUM_MIN = self.cfg['NUM_MIN']
+        cdef int NUM_MAX = self.cfg['NUM_MAX']
+        n_generator = self.cfg['n_generator']
+        train_path = self.cfg['train_path']
+        cdef int j = self.num_train_prep_cycles
+        
         self.ClearTrainGraphs()
-        cdef int i
-        for i in tqdm(range(num_graphs)):
-            g = utils.gen_graph(num_min, num_max, self.cfg['g_type'])
-            self.InsertGraph(g, is_test=False)
-    
-    def PrepareValidData(self):
-        cdef int counter = 0
-        cdef int n_valid = self.cfg['n_valid']
-        if self.cfg['valid_path']:
-            atoi = lambda text : int(text) if text.isdigit() else text
-            natural_keys = lambda text : [atoi(c) for c in re.split('(\d+)', text)]
-            try:
-                fnames = os.listdir(self.cfg['valid_path'])
-                fnames.sort(key=natural_keys)
-                print('\nLoading validation graphs...')
-            except:
-                print('\nBad validation directory!')
-            
-            for fname in fnames:
-                if not '.tsp' in fname:
-                    print(fname)
-                    continue
-                try:
-                    problem = tsplib95.load(self.cfg['valid_path'] + fname)
-                    g = problem.get_graph()
-                    # remove edges from nodes to itself
-                    ebunch=[(k,k) for k in range(len(g.nodes))]
-                    g.remove_edges_from(ebunch)
-                    for node in range(len(g.nodes)):
-                        g.nodes[node]['coord'] = np.array(g.nodes[node]['coord']) * self.cfg['valid_scale_fac']
-                    for edge in g.edges:
-                        g.edges[edge]['weight'] = g.edges[edge]['weight'] * self.cfg['valid_scale_fac']
-                    self.InsertGraph(g, is_test=True)
-                    counter += 1
-                except:
-                    print("An error occured loading file:", fname)
-                    continue
-            print("\nSucessfully loaded {} validation graphs!".format(counter))
+        
+        if self.cfg['train_path']:
+            assert NUM_MIN == NUM_MAX
+            print('Loading new training graphs...')
+            g_list = self.tsp_loader.load_multi_tsp_as_nx(data_dir=train_path, 
+                                                          scale_factor=self.cfg['train_scale_fac'], 
+                                                          start_index=j*n_generator, 
+                                                          end_index=(j+1)*n_generator)
+            if self.cfg['use_edge_probs']:
+                edge_probs = self.prepare_heatmaps(path=f'{train_path}/heatmaps', 
+                                                   num_cycles=self.num_train_prep_cycles, 
+                                                   num_samples_per_cycle=n_generator)
+            else:
+                edge_probs = None
         else:
-            print('\nGenerating validation graphs...')
-            sys.stdout.flush()
-            for i in tqdm(range(n_valid)):
-                g = utils.gen_graph(self.cfg['NUM_MIN'], self.cfg['NUM_MAX'])
-                self.InsertGraph(g, is_test=True)
+            print('Generating new training graphs...')
+            g_list = self.generate_graphs(n_generator)
+            edge_probs = None
 
-    def GenNetwork(self, g):    #networkx2four
+
+        self.InsertGraphs(g_list, is_test=False, edge_probs=edge_probs)
+        self.num_train_prep_cycles += 1
+
+    def PrepareValidData(self):
+        cdef int n_valid = self.cfg['n_valid']
+        valid_path = self.cfg['valid_path']
+        if self.cfg['valid_path']:
+            g_list = self.tsp_loader.load_multi_tsp_as_nx(data_dir=valid_path, 
+                                                          scale_factor=self.cfg['valid_scale_fac'])
+            n_valid = len(g_list)
+            print(f"\nSucessfully loaded {n_valid} validation graphs!")
+            if self.cfg['use_edge_probs']:
+                edge_probs = self.prepare_heatmaps(path=f'{valid_path}/heatmaps', num_cycles=0, num_samples_per_cycle=n_valid)
+            else:
+                edge_probs = None
+        else:
+            print('Generating validation graphs...')
+            g_list = self.generate_graphs(n_valid)
+            edge_probs = None
+        
+
+        self.InsertGraphs(g_list, is_test=True, edge_probs=edge_probs)
+
+    def generate_graphs(self, int num_graphs):
+        cdef int num_min = self.cfg['NUM_MIN']
+        cdef int num_max = self.cfg['NUM_MAX']
+        sys.stdout.flush()
+        cdef int i
+        g_list = []
+        for i in tqdm(range(num_graphs)):
+            g = pyx_utils.gen_graph(num_min, num_max, self.cfg['g_type'])
+            g_list.append(g)
+        return g_list
+
+    def prepare_heatmaps(self, path, num_cycles, num_samples_per_cycle):
+        atoi = lambda text : int(text) if text.isdigit() else text
+        natural_keys = lambda text : [atoi(c) for c in re.split('(\d+)', text)]
+        try:
+            fnames = [f for f in os.listdir(path) if os.path.isfile(f'{path}/{f}')]
+            fnames.sort(key=natural_keys)
+        except:
+            print('\nBad heatmap directory!')
+            return None
+        if len(fnames) == 1:
+            return np.load(f'{path}/{fnames[0]}')
+        heat_map = None
+        for fname in fnames:
+            start_index = int(fname.split('.')[0].split('-')[0].split('_')[-1])
+            end_index = int(fname.split('.')[0].split('-')[-1])
+            if start_index < num_cycles * num_samples_per_cycle:
+                continue
+            if end_index > (num_cycles + 1) * num_samples_per_cycle:
+                continue
+            if heat_map is not None:
+                heat_map = np.concatenate([heat_map, np.load(f'{path}/{fname}')], axis=0)
+            else:
+                heat_map = np.load(f'{path}/{fname}')
+        print(heat_map.shape)
+        return heat_map
+
+    def GenNetwork(self, g, edge_prob=None):    #networkx2four
         cdef double NN_ratio = self.cfg['NN_ratio']
         # transforms the networkx graph object into C graph object using external pyx module
         nodes = g.nodes()
         edges = g.edges()
+        num_nodes = len(nodes)
+        num_edges = len(edges)
         if len(edges) > 0:
             a, b = zip(*edges) 
             A = np.array(a)
@@ -1027,6 +1068,10 @@ class FINDER:
             # edge weights
             # W = np.array([g[n][m]['weight'] for n, m in zip(a, b)])
             W = np.array([[g[n][m]['weight'] if m != n else 0.0 for m in nodes] for n in nodes])
+            if edge_prob is not None:
+                P = edge_prob
+            else:
+                P = np.zeros(shape=(num_nodes, num_nodes), dtype=np.int32)
             # node features (node position)
             try:
                 F = np.array([g.nodes[k]['coord'] for k in range(len(nodes))])
@@ -1037,22 +1082,33 @@ class FINDER:
             B = np.array([0])
             W = np.array([0])
             F = np.array([0])
-        num_nodes = len(nodes)
-        num_edges = len(edges)
         return graph.py_Graph(num_nodes, num_edges, A, B, W, F, NN_ratio)
              
 
-    def InsertGraph(self, g, is_test):
+    def InsertGraphs(self, g_list, is_test, edge_probs=None):
         cdef int t
-        if is_test:
-            t = self.ngraph_test
-            self.ngraph_test += 1
-            self.TestSet.InsertGraph(t, self.GenNetwork(g))
-        else:
-            t = self.ngraph_train
-            self.ngraph_train += 1
-            self.TrainSet.InsertGraph(t, self.GenNetwork(g))
-
+        # insert prbability calculation here
+        # self.graph_preprocessor.init_net()
+        # self.graph_preprocessor.load_ckpt()
+        # self.graph_preprocessor.load_nx_test_set(graph_list=g_list, num_nodes=20)
+        # result = self.graph_preprocessor.run_test(batch_size=250)
+        for k, g in enumerate(g_list):
+            if edge_probs is not None:
+                edge_prob = edge_probs[k]
+            else:
+                edge_prob = None
+            if is_test:
+                t = self.ngraph_test
+                self.ngraph_test += 1
+                self.TestSet.InsertGraph(t, self.GenNetwork(g, edge_prob=edge_prob))
+            else:
+                t = self.ngraph_train
+                self.ngraph_train += 1
+                self.TrainSet.InsertGraph(t, self.GenNetwork(g, edge_prob=edge_prob))
+        
+        # self.graph_preprocessor.clear_gpu_memory()
+        # del self.graph_preprocessor.net
+        # gc.collect()
 
     def ClearTrainGraphs(self):
         self.ngraph_train = 0
@@ -1222,468 +1278,3 @@ class FINDER:
             self.nStepReplayMem.batch_update(tree_idx, result[1])
             loss += result[2]*bsize
         return loss / len(g_list)
-    
-
-    def BuildNet(self):
-        """
-        Builds the Tensorflow network, returning different options to access it
-        """
-        # some definitions for convenience
-        cdef int node_init_dim = self.cfg['node_init_dim']
-        cdef int edge_init_dim = self.cfg['edge_init_dim']
-        cdef int state_init_dim = self.cfg['state_init_dim']
-        
-        cdef int node_embed_dim = self.cfg['node_embed_dim']
-        cdef int edge_embed_dim = self.cfg['edge_embed_dim']
-        cdef double initialization_stddev = self.cfg['initialization_stddev']
-        # [node_init_dim, node_embed_dim]
-        w_n2l = tf.Variable(tf.truncated_normal([node_init_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
-
-        # [node_init_dim, node_embed_dim], state input embedding matrix
-        w_s2l = tf.Variable(tf.truncated_normal([state_init_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
-
-        # Define weight matrices for GNN 
-        # [node_embed_dim, node_embed_dim]
-        p_node_conv1 = tf.Variable(tf.truncated_normal([node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32) 
-        
-        # [node_embed_dim, node_embed_dim]
-        p_node_conv2 = tf.Variable(tf.truncated_normal([node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32) 
-        
-        # [edge_init_dim, edge_embed_dim]
-        w_e2l = tf.Variable(tf.truncated_normal([edge_init_dim, edge_embed_dim], stddev=initialization_stddev), tf.float32)
-        
-        if self.cfg['embeddingMethod'] == 1:
-            
-            # [node_embed_dim, node_embed_dim]
-            w_edge_final = tf.Variable(tf.truncated_normal([edge_embed_dim, edge_embed_dim], stddev=initialization_stddev), tf.float32)
-            # [2*node_embed_dim+edge_embed_dim, node_embed_dim]
-            p_node_conv3 = tf.Variable(tf.truncated_normal([2*node_embed_dim + edge_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
-        elif self.cfg['embeddingMethod'] == 2:
-            
-            # [node_embed_dim, node_embed_dim]
-            w_edge_final = tf.Variable(tf.truncated_normal([edge_embed_dim, edge_embed_dim], stddev=initialization_stddev), tf.float32)
-            # [2*node_embed_dim+edge_embed_dim, node_embed_dim]
-            p_node_conv3 = tf.Variable(tf.truncated_normal([2*node_embed_dim + edge_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
-        elif self.cfg['embeddingMethod'] == 3:
-        
-            # [edge_embed_dim, edge_embed_dim]
-            trans_edge_1 = tf.Variable(tf.truncated_normal([edge_embed_dim, edge_embed_dim], stddev=initialization_stddev), tf.float32)
-            
-            # [edge_embed_dim, edge_embed_dim]
-            trans_edge_2 = tf.Variable(tf.truncated_normal([edge_embed_dim, edge_embed_dim], stddev=initialization_stddev), tf.float32)
-            
-            # [2*edge_embed_dim, edge_embed_dim]
-            trans_edge_3 = tf.Variable(tf.truncated_normal([2*edge_embed_dim, edge_embed_dim], stddev=initialization_stddev), tf.float32)
-            
-            # [node_embed_dim, node_embed_dim]
-            trans_node_1 = tf.Variable(tf.truncated_normal([edge_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
-            
-            # [node_embed_dim, node_embed_dim]
-            trans_node_2 = p_node_conv2
-            
-            # [2*node_embed_dim, node_embed_dim]
-            # trans_node_3 = tf.Variable(tf.truncated_normal([2*node_embed_dim, node_embed_dim], stddev=self.cfg['initialization_stddev']), tf.float32)
-            
-            # [3*node_embed_dim, node_embed_dim]
-            p_node_conv3 = tf.Variable(tf.truncated_normal([3*node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
-            w_l = p_node_conv3
-        else:
-            # [2*node_embed_dim, node_embed_dim]
-            p_node_conv3 = tf.Variable(tf.truncated_normal([2*node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
-
-        
-        # define weight matrices for state embedding
-        # [node_embed_dim, node_embed_dim]
-        if self.cfg['state_representation'] == 0:
-            p_state_conv1 = p_node_conv1
-        else:
-            p_state_conv1 = tf.Variable(tf.truncated_normal([node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32) 
-
-        if self.cfg['embeddingMethod'] == 3:
-            # [node_embed_dim, node_embed_dim]
-            p_state_conv2 = tf.Variable(tf.truncated_normal([node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
-        else:
-            # [node_embed_dim, node_embed_dim]
-            p_state_conv2 = p_node_conv2
-
-        # [2*node_embed_dim, node_embed_dim]
-        p_state_conv3 = tf.Variable(tf.truncated_normal([2*node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
-
-        if self.cfg['focus_start_end_node'] == 1:
-            # [3*node_embed_dim, node_embed_dim]
-            p_state_conv4 = tf.Variable(tf.truncated_normal([3*node_embed_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)    
-
-        #[reg_hidden, 1]
-        if self.cfg['REG_HIDDEN'] > 0:
-            if self.cfg['decoder'] == 0:
-                # [node_embed_dim, reg_hidden]
-                h1_weight = tf.Variable(tf.truncated_normal([1*node_embed_dim, self.cfg['REG_HIDDEN']], 
-                                                             stddev=initialization_stddev), tf.float32)
-            elif self.cfg['decoder'] == 1:
-                # [node_embed_dim, reg_hidden]
-                if self.cfg['focus_start_end_node'] == 1:
-                    h1_weight = tf.Variable(tf.truncated_normal([4*node_embed_dim, self.cfg['REG_HIDDEN']], 
-                                                                stddev=initialization_stddev), tf.float32)
-                else:
-                    h1_weight = tf.Variable(tf.truncated_normal([2*node_embed_dim, self.cfg['REG_HIDDEN']], 
-                                                                stddev=initialization_stddev), tf.float32)
-            
-            #[reg_hidden, 1]
-            h2_weight = tf.Variable(tf.truncated_normal([self.cfg['REG_HIDDEN'], 1], stddev=initialization_stddev), tf.float32)
-            
-            #[reg_hidden, 1]
-            last_w = h2_weight
-
-        if self.cfg['decoder'] == 0:
-            # [node_embed_dim, 1]
-            cross_product1 = tf.Variable(tf.truncated_normal([node_embed_dim, 1], stddev=initialization_stddev), tf.float32)
-            # # [node_embed_dim, 1]
-            # cross_product2 = tf.Variable(tf.truncated_normal([node_embed_dim, 1], stddev=initialization_stddev), tf.float32)
-            # # [node_embed_dim, 1]
-            # cross_product3 = tf.Variable(tf.truncated_normal([node_embed_dim, 1], stddev=initialization_stddev), tf.float32)
-
-
-        # [node_cnt, node_init_dim] * [node_init_dim, node_embed_dim] = [node_cnt, node_embed_dim], not sparse
-        node_init = tf.matmul(tf.cast(self.placeholder_dict['node_input'], tf.float32), w_n2l)
-        cur_node_embed = tf.nn.relu(node_init)
-        cur_node_embed = tf.nn.l2_normalize(cur_node_embed, axis=1)
-        
-        # [batch_size, node_init_dim]
-        num_samples = tf.shape(self.placeholder_dict['subgsum_param'])[0]
-        state_input = tf.ones((num_samples, state_init_dim))
-        # [batch_size, node_init_dim] * [node_init_dim, node_embed_dim] = [batch_size, node_embed_dim]
-        cur_state_embed = tf.matmul(tf.cast(state_input, tf.float32), w_s2l)
-        cur_state_embed = tf.nn.relu(cur_state_embed)
-        cur_state_embed = tf.nn.l2_normalize(cur_state_embed, axis=1)
-        
-        if self.cfg['embeddingMethod'] == 1:
-            # [node_cnt, edge_init_dim] * [edge_init_dim, edge_embed_dim] = [node_cnt, edge_embed_dim], dense
-            edge_init = tf.matmul(tf.cast(self.placeholder_dict['edge_sum'], tf.float32), w_e2l, name='edge_init')
-            cur_edge_embed = tf.nn.relu(edge_init)
-            cur_edge_embed = tf.nn.l2_normalize(cur_edge_embed, axis=1)
-            # [node_cnt, edge_embed_dim] * [edge_embed_dim, edge_embed_dim] = [node_cnt, edge_embed_dim], dense
-            cur_edge_embed = tf.matmul(cur_edge_embed, w_edge_final)
-            cur_edge_embed = tf.nn.relu(cur_edge_embed)
-        
-        elif self.cfg['embeddingMethod'] == 2:
-            # [edge_cnt, edge_init_dim] * [edge_init_dim, edge_embed_dim] = [edge_cnt, edge_embed_dim], dense
-            edge_init = tf.matmul(tf.cast(self.placeholder_dict['edge_input'], tf.float32), w_e2l, name='edge_init')
-            cur_edge_embed = tf.nn.relu(edge_init)
-            cur_edge_embed = tf.nn.l2_normalize(cur_edge_embed, axis=1)
-            # [node_cnt, edge_embed_dim] * [edge_embed_dim, edge_embed_dim] = [node_cnt, edge_embed_dim], dense
-            cur_edge_embed = tf.matmul(cur_edge_embed, w_edge_final)
-            cur_edge_embed = tf.nn.relu(cur_edge_embed)
-            # [node_cnt, edge_cnt] * [edge_cnt, edge_embed_dim] = [node_cnt, edge_embed_dim], dense
-            cur_edge_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['e2nsum_param'], tf.float32), cur_edge_embed)
-            
-        elif self.cfg['embeddingMethod'] == 3:
-            # [edge_cnt, edge_dim] * [edge_dim, embed_dim] = [edge_cnt, embed_dim]
-            edge_init = tf.matmul(tf.cast(self.placeholder_dict['edge_input'], tf.float32), w_e2l)
-            edge_init = tf.nn.relu(edge_init)
-            edge_init = tf.nn.l2_normalize(edge_init, axis=1)
-            cur_edge_embed = tf.identity(edge_init)
-
-        ################### GNN start ###################
-        cdef int lv = 0
-        cdef int max_bp_iter = self.cfg['max_bp_iter']
-        while lv < max_bp_iter:
-            lv = lv + 1
-            if self.cfg['embeddingMethod'] == 3:
-                cur_node_embed_prev = tf.identity(cur_node_embed)
-                ###################### update edges ####################################
-                # [node_cnt, embed_dim] * [embed_dim, embed_dim] = [node_cnt, embed_dim]
-                msg_linear_node = tf.matmul(cur_node_embed, p_node_conv1)
-                
-                # [edge_cnt, node_cnt] * [node_cnt, embed_dim] = [edge_cnt, embed_dim]
-                n2e = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['n2esum_param_0'], tf.float32), msg_linear_node)
-                
-                # [edge_cnt, embed_dim] + [edge_cnt, embed_dim] = [edge_cnt, embed_dim]
-                # n2e_linear = tf.add(n2e, edge_init)
-                
-                # n2e_linear = tf.concat([tf.matmul(n2e, trans_edge_1), tf.matmul(edge_init, trans_edge_2)], axis=1)    #we used
-                
-                # [[edge_cnt, embed_dim] * [edge_embed_dim, edge_embed_dim], [edge_cnt, embed_dim] * [edge_embed_dim, edge_embed_dim]] = [edge_cnt, 2*edge_embed_dim]
-                n2e_linear = tf.concat([tf.matmul(n2e, trans_edge_1), tf.matmul(cur_edge_embed, trans_edge_2)], axis=1)    #we used
-                
-                # n2e_linear = tf.concat([n2e, edge_init], axis=1) # [edge_cnt, 2*embed_dim]   
-        
-                ### if MLP
-                # cur_edge_embed_temp = tf.nn.relu(tf.matmul(n2e_linear, trans_edge_1))   #[edge_cnt, embed_dim]
-                # cur_edge_embed = tf.nn.relu(tf.matmul(cur_edge_embed_temp, trans_edge_2))   #[edge_cnt, embed_dim]
-                
-                # [edge_cnt, 2*edge_embed_dim] * [2*edge_embed_dim, edge_embed_dim] = [edge_cnt, edge_embed_dim]
-                cur_edge_embed = tf.matmul(n2e_linear, trans_edge_3)
-                cur_edge_embed = tf.nn.relu(cur_edge_embed)
-                cur_edge_embed = tf.nn.l2_normalize(cur_edge_embed, axis=1)
-                
-                ###################### update nodes ####################################
-                # msg_linear_edge = tf.matmul(cur_edge_embed, p_node_conv2)
-                
-                # [node_cnt, edge_cnt] * [edge_cnt, edge_embed_dim] = [node_cnt, edge_embed_dim]
-                e2n = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['e2nsum_param'], tf.float32), cur_edge_embed)
-                
-                # [[node_cnt, edge_embed_dim] * [edge_embed_dim, node_embed_dim] [node_cnt, node_embed_dim] * [node_embed_dim, node_embed_dim]] 
-                # = [node_cnt, 2*node_embed_dim]
-                
-                node_linear = tf.concat([tf.matmul(e2n, trans_node_1, name='matmul_1'), tf.matmul(cur_node_embed, trans_node_2, name='matmul_2')], axis=1)    #we used
-                # node_linear = tf.add(tf.matmul(e2n, trans_node_1), tf.matmul(cur_node_embed, trans_node_2)) 
-                # node_linear = tf.concat([e2n, cur_node_embed], axis=1)  #[node_cnt, 2*embed_dim]
-                
-                ## if MLP
-                # cur_node_embed_temp = tf.nn.relu(tf.matmul(node_linear, trans_node_1))  # [node_cnt, embed_dim]
-                # cur_node_embed = tf.nn.relu(tf.matmul(cur_node_embed_temp, trans_node_2))   # [node_cnt, embed_dim]
-                
-                # [node_cnt, embed_dim]
-                # cur_edge_embed = tf.matmul(n2e_linear, trans_node_3)
-                cur_node_embed = tf.nn.relu(node_linear)
-                cur_node_embed = tf.nn.l2_normalize(cur_node_embed, axis=1)
-                # [node_cnt, 3*node_embed_dim] * [3*node_embed_dim, node_embed_dim] = [node_cnt, embed_dim]
-                cur_node_embed = tf.matmul(tf.concat([cur_node_embed, cur_node_embed_prev], axis=1), w_l)
-
-                ##### state calculation start #####
-                # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
-                state_pool = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['subgsum_param'], tf.float32), cur_node_embed_prev)
-                
-                # [batch_size, node_embed_dim] * [node_embed_dim, node_embed_dim] = [batch_size, node_embed_dim], dense
-                state_linear = tf.matmul(state_pool, p_node_conv1)
-                state_linear = tf.nn.relu(state_linear)
-
-                # [batch_size, node_embed_dim] * [node_embed_dim, node_embed_dim] = [batch_size, node_embed_dim], dense
-                cur_state_embed_linear = tf.matmul(cur_state_embed, p_state_conv2)
-                cur_state_embed_linear = tf.nn.relu(cur_state_embed_linear)
-                
-                # [[batch_size, node_embed_dim] [batch_size, node_embed_dim]] = [batch_size, 2*node_embed_dim], return tensed matrix
-                state_merged_linear = tf.concat([state_linear, cur_state_embed_linear], axis=1)
-                
-                # [batch_size, 2(3)*node_embed_dim]*[2(3)*node_embed_dim, node_embed_dim] = [batch_size, node_embed_dim]
-                cur_state_embed = tf.matmul(state_merged_linear, p_state_conv3)
-                cur_state_embed = tf.nn.relu(cur_state_embed)
-                cur_state_embed = tf.nn.l2_normalize(cur_state_embed, axis=1)  
-                ##### state calculation end #####
-            else:
-                cur_node_embed_prev = cur_node_embed
-                # [node_cnt, node_cnt] * [node_cnt, node_embed_dim] = [node_cnt, node_embed_dim], dense
-                n2npool = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['n2nsum_param'], tf.float32), cur_node_embed) 
-
-                # [node_cnt, node_embed_dim] * [node_embed_dim, node_embed_dim] = [node_cnt, node_embed_dim], dense
-                n2n_linear = tf.matmul(n2npool, p_node_conv1)
-                n2n_linear = tf.nn.relu(n2n_linear)
-
-                # [node_cnt, node_embed_dim] * [node_embed_dim, node_embed_dim] = [node_cnt, node_embed_dim], dense
-                cur_node_embed_linear = tf.matmul(cur_node_embed, p_node_conv2)
-                cur_node_embed_linear = tf.nn.relu(cur_node_embed_linear)
-                
-                if self.cfg['embeddingMethod'] == 1:
-                    # [[node_cnt, node_embed_dim] [node_cnt, node_embed_dim] [node_cnt, edge_embed_dim]] = [node_cnt, 2*node_embed_dim + edge_embed_dim]
-                    merged_linear = tf.concat([n2n_linear, cur_node_embed_linear, cur_edge_embed], axis=1)
-                elif self.cfg['embeddingMethod'] == 2:
-                    # [[node_cnt, node_embed_dim] [node_cnt, node_embed_dim] [node_cnt, edge_embed_dim]] = [node_cnt, 2*node_embed_dim + edge_embed_dim]
-                    merged_linear = tf.concat([n2n_linear, cur_node_embed_linear, cur_edge_embed], axis=1)
-                else:
-                    # [[node_cnt, node_embed_dim] [node_cnt, node_embed_dim]] = [node_cnt, 2*node_embed_dim], return dense matrix
-                    merged_linear = tf.concat([n2n_linear, cur_node_embed_linear], axis=1)
-                
-                # [node_cnt, 2(3)*node_embed_dim]*[2(3)*node_embed_dim, node_embed_dim] = [node_cnt, node_embed_dim]
-                cur_node_embed = tf.nn.relu(tf.matmul(merged_linear, p_node_conv3))
-                cur_node_embed = tf.nn.l2_normalize(cur_node_embed, axis=1) 
-                if self.cfg['state_representation'] == 0:
-                    ##### state calculation start #####
-                    # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
-                    state_pool = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['subgsum_param'], tf.float32), cur_node_embed_prev)
-                    
-                    # [batch_size, node_embed_dim] * [node_embed_dim, node_embed_dim] = [batch_size, node_embed_dim], dense
-                    state_linear = tf.matmul(state_pool, p_state_conv1)
-                    state_linear = tf.nn.relu(state_linear)
-
-                    # [batch_size, node_embed_dim] * [node_embed_dim, node_embed_dim] = [batch_size, node_embed_dim], dense
-                    cur_state_embed_linear = tf.matmul(cur_state_embed, p_state_conv2)
-                    cur_state_embed_linear = tf.nn.relu(cur_state_embed_linear)
-                    
-                    # [[batch_size, node_embed_dim] [batch_size, node_embed_dim]] = [batch_size, 2*node_embed_dim], return tensed matrix
-                    state_merged_linear = tf.concat([state_linear, cur_state_embed_linear], axis=1)
-                    
-                    # [batch_size, 2(3)*node_embed_dim]*[2(3)*node_embed_dim, node_embed_dim] = [batch_size, node_embed_dim]
-                    cur_state_embed = tf.matmul(state_merged_linear, p_state_conv3)
-                    cur_state_embed = tf.nn.relu(cur_state_embed)
-                    cur_state_embed = tf.nn.l2_normalize(cur_state_embed, axis=1) 
-                    ##### state calculation end #####
-
-        ################### GNN end ###################
-     
-        # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
-        action_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['action_select'], tf.float32), cur_node_embed)
-        if self.cfg['state_representation'] == 1:
-            # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
-            cur_state_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['state_sum_param'], tf.float32), cur_node_embed)
-            # [batch_size, node_embed_dim] * [node_embed_dim, node_embed_dim] = [batch_size, node_embed_dim], dense
-            cur_state_embed = tf.matmul(cur_state_embed, p_state_conv1)
-            cur_state_embed = tf.nn.relu(cur_state_embed)
-            cur_state_embed = tf.nn.l2_normalize(cur_state_embed, axis=1)
-
-        elif self.cfg['state_representation'] == 2:
-            
-            # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
-            covered_embed_padded = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['state_param'], tf.float32), cur_node_embed)
-            covered_embed_padded_shape = tf.shape(covered_embed_padded)
-            covered_embed_padded_reshaped = tf.reshape(covered_embed_padded, [num_samples, -1, node_embed_dim])
-            covered_embed_padded_reshaped_shape = tf.shape(covered_embed_padded_reshaped)
-            masked_covered_embed = tf.keras.layers.Masking(mask_value=0.)(covered_embed_padded_reshaped)
-            
-            RNN_cell = tf.keras.layers.LSTMCell(units=64)
-            RNN_layer = tf.keras.layers.RNN(cell=RNN_cell, return_state=True, return_sequences=True)
-            
-            whole_seq_output, final_memory_state, final_carry_state = RNN_layer(masked_covered_embed)
-            cur_state_embed = final_carry_state
-            
-            # RNN_layer = tf.keras.layers.Bidirectional(tf.keras.layers.RNN(cell=RNN_cell))
-            # concat_weight = tf.Variable(tf.truncated_normal([2*64, 64], stddev=initialization_stddev), tf.float32)
-            
-            # output = RNN_layer(masked_covered_embed)
-            # cur_state_embed = tf.concat([output, output], axis=1)
-            # cur_state_embed = output
-            # cur_state_embed = tf.matmul(cur_state_embed, concat_weight)
-            # cur_state_embed = tf.nn.relu(cur_state_embed)
-            
-            # cur_state_embed = tf.nn.l2_normalize(cur_state_embed, axis=1)  
-        
-
-        if self.cfg['focus_start_end_node'] == 1:
-            # [batch_size, node_embed_dim]
-            start_node_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['start_param'], tf.float32), cur_node_embed)
-            end_node_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['end_param'], tf.float32), cur_node_embed)    
-        
-            # [batch_size, 3*node_embed_dim]
-            state_merged = tf.concat([cur_state_embed, start_node_embed, end_node_embed], axis=1)
-            # [batch_size, node_embed_dim]
-            cur_state_embed = tf.matmul(state_merged, p_state_conv4)
-            cur_state_embed = tf.nn.relu(cur_state_embed)
-
-        if self.cfg['decoder'] == 0:    
-            # [batch_size, node_embed_dim]
-            Shape = tf.shape(action_embed)
-            
-            # [batch_size, node_embed_dim, 1] * [batch_size, 1, node_embed_dim] = [batch_size, node_embed_dim, node_embed_dim]
-            temp = tf.matmul(tf.expand_dims(action_embed, axis=2), tf.expand_dims(cur_state_embed, axis=1))
-            # ([batch_size, node_embed_dim, node_embed_dim] * ([batch_size*node_embed_dim, 1] --> [batch_size, node_embed_dim, 1])) --> [batch_size, node_embed_dim] = [batch_size, node_embed_dim], first transform
-            embed_s_a = tf.reshape(tf.matmul(temp, tf.reshape(tf.tile(cross_product1,[Shape[0],1]),[Shape[0],Shape[1],1])), Shape)
-
-            # # [batch_size, node_embed_dim, 1] * [batch_size, 1, node_embed_dim] = [batch_size, node_embed_dim, node_embed_dim]
-            # temp = tf.matmul(tf.expand_dims(action_embed, axis=2), tf.expand_dims(cur_state_embed, axis=1))
-            # # ([batch_size, node_embed_dim, node_embed_dim] * ([batch_size*node_embed_dim, 1] --> [batch_size, node_embed_dim, 1])) --> [batch_size, node_embed_dim] = [batch_size, node_embed_dim], first transform
-            # embed_state_a = tf.reshape(tf.matmul(temp, tf.reshape(tf.tile(cross_product1,[Shape[0],1]),[Shape[0],Shape[1],1])), Shape) 
-            
-            # # [batch_size, node_embed_dim, 1] * [batch_size, 1, node_embed_dim] = [batch_size, node_embed_dim, node_embed_dim]
-            # temp_start = tf.matmul(tf.expand_dims(action_embed, axis=2), tf.expand_dims(start_node_embed, axis=1))
-            # # ([batch_size, node_embed_dim, node_embed_dim] * ([batch_size*node_embed_dim, 1] --> [batch_size, node_embed_dim, 1])) --> [batch_size, node_embed_dim] = [batch_size, node_embed_dim], first transform
-            # embed_start_a = tf.reshape(tf.matmul(temp_start, tf.reshape(tf.tile(cross_product2,[Shape[0],1]),[Shape[0],Shape[1],1])), Shape)
-
-            # # [batch_size, node_embed_dim, 1] * [batch_size, 1, node_embed_dim] = [batch_size, node_embed_dim, node_embed_dim]
-            # temp_end = tf.matmul(tf.expand_dims(action_embed, axis=2), tf.expand_dims(end_node_embed, axis=1))
-            # # ([batch_size, node_embed_dim, node_embed_dim] * ([batch_size*node_embed_dim, 1] --> [batch_size, node_embed_dim, 1])) --> [batch_size, node_embed_dim] = [batch_size, node_embed_dim], first transform
-            # embed_end_a = tf.reshape(tf.matmul(temp_end, tf.reshape(tf.tile(cross_product3,[Shape[0],1]),[Shape[0],Shape[1],1])), Shape)
-            
-            # embed_s_a = tf.concat([embed_state_a, embed_start_a, embed_end_a], axis=1)
-
-        elif self.cfg['decoder'] == 1:
-            # [batch_size, 2*node_embed_dim]
-            
-            if self.cfg['focus_start_end_node'] == 1:
-                embed_s_a = tf.concat([action_embed, cur_state_embed, start_node_embed, end_node_embed], axis=1)
-            else:
-                embed_s_a = tf.concat([action_embed, cur_state_embed], axis=1)
-        last_output = embed_s_a
-        
-        if self.cfg['REG_HIDDEN'] > 0:
-            # [batch_size, (2)node_embed_dim] * [(2)node_embed_dim, reg_hidden] = [batch_size, reg_hidden], dense
-            hidden = tf.matmul(embed_s_a, h1_weight)
-            
-            # [batch_size, reg_hidden]
-            last_output = tf.nn.relu(hidden)
-        
-        # [batch_size, reg_hidden] * [reg_hidden, 1] = [batch_size, 1]
-        q_pred = tf.matmul(last_output, last_w)
-
-        # Trace([node_embed_dim, node_cnt] * [node_cnt, node_cnt] * [node_cnt, node_embed_dim]) first order reconstruction loss
-        loss_recons = 2 * tf.linalg.trace(tf.matmul(tf.transpose(cur_node_embed), tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['laplacian_param'],tf.float32), cur_node_embed)))
-        
-        # needs refinement
-        edge_num = tf.sparse_reduce_sum(tf.cast(self.placeholder_dict['n2nsum_param'], tf.float32))
-        
-        loss_recons = tf.divide(loss_recons, edge_num)
-
-        if self.cfg['IsPrioritizedSampling']:
-            self.TD_errors = tf.reduce_sum(tf.abs(self.placeholder_dict['target'] - q_pred), axis=1)    # for updating Sumtree
-            if self.cfg['IsHuberloss']:
-                loss_rl = tf.losses.huber_loss(self.ISWeights * self.placeholder_dict['target'], self.ISWeights * q_pred)
-            else:
-                loss_rl = tf.reduce_mean(self.ISWeights * tf.squared_difference(self.placeholder_dict['target'], q_pred))
-        else:
-            if self.cfg['IsHuberloss']:
-                loss_rl = tf.losses.huber_loss(self.placeholder_dict['target'], q_pred)
-            else:
-                loss_rl = tf.losses.mean_squared_error(self.placeholder_dict['target'], q_pred)
-        # calculate full loss
-        loss = loss_rl + self.cfg['Alpha'] * loss_recons
-
-        trainStep = tf.compat.v1.train.AdamOptimizer(self.cfg['LEARNING_RATE']).minimize(loss)
-        
-        # This part only gets executed if tf.session.run([self.q_on_all]) or tf.session.run([self.q_on_allT])
-
-        # [node_cnt, batch_size] * [batch_size, node_embed_dim] = [node_cnt, node_embed_dim] 
-        # the result is a matrix where each row holds the state embedding of the corresponding graph and each row corresponds to a node of a graph in the batch
-        rep_state = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['rep_global'], tf.float32), cur_state_embed)
-        if self.cfg['focus_start_end_node'] == 1:
-            rep_start = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['rep_global'], tf.float32), start_node_embed)
-            rep_end = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['rep_global'], tf.float32), end_node_embed)
-
-        if self.cfg['decoder'] == 0:
-            # [node_cnt node_embed_dim]
-            Shape1 = tf.shape(cur_node_embed)
-            
-            # [node_cnt, node_embed_dim, 1] * [node_cnt, 1, node_embed_dim] = [node_cnt, node_embed_dim, node_embed_dim]
-            temp_1 = tf.matmul(tf.expand_dims(cur_node_embed, axis=2), tf.expand_dims(rep_state, axis=1))
-            # [batch_size, node_embed_dim], first transform
-            embed_s_a_all = tf.reshape(tf.matmul(temp_1, tf.reshape(tf.tile(cross_product1,[Shape1[0],1]),[Shape1[0],Shape1[1],1])),Shape1)
-            
-            # # [node_cnt, node_embed_dim, 1] * [node_cnt, 1, node_embed_dim] = [node_cnt, node_embed_dim, node_embed_dim]
-            # temp_state = tf.matmul(tf.expand_dims(cur_node_embed, axis=2), tf.expand_dims(rep_state, axis=1))
-            # # [batch_size, node_embed_dim], first transform
-            # embed_state_a_all = tf.reshape(tf.matmul(temp_state, tf.reshape(tf.tile(cross_product1,[Shape1[0],1]),[Shape1[0],Shape1[1],1])),Shape1)
-
-            # # [node_cnt, node_embed_dim, 1] * [node_cnt, 1, node_embed_dim] = [node_cnt, node_embed_dim, node_embed_dim]
-            # temp_start = tf.matmul(tf.expand_dims(cur_node_embed, axis=2), tf.expand_dims(rep_start, axis=1))
-            # # [batch_size, node_embed_dim], first transform
-            # embed_start_a_all = tf.reshape(tf.matmul(temp_start, tf.reshape(tf.tile(cross_product1,[Shape1[0],1]),[Shape1[0],Shape1[1],1])),Shape1)
-
-            # # [node_cnt, node_embed_dim, 1] * [node_cnt, 1, node_embed_dim] = [node_cnt, node_embed_dim, node_embed_dim]
-            # temp_end = tf.matmul(tf.expand_dims(cur_node_embed, axis=2), tf.expand_dims(rep_end, axis=1))
-            # # [batch_size, node_embed_dim], first transform
-            # embed_end_a_all = tf.reshape(tf.matmul(temp_end, tf.reshape(tf.tile(cross_product1,[Shape1[0],1]),[Shape1[0],Shape1[1],1])),Shape1)
-
-            # embed_s_a_all = tf.concat([embed_state_a_all, embed_start_a_all, embed_end_a_all], axis=1)
-
-        elif self.cfg['decoder'] == 1:
-            # [node_cnt, 2*node_embed_dim]
-            if self.cfg['focus_start_end_node'] == 1:
-                embed_s_a_all = tf.concat([cur_node_embed, rep_state, rep_start, rep_end], axis=1)
-            else:
-                embed_s_a_all = tf.concat([cur_node_embed, rep_state], axis=1)
-
-        # [node_cnt, 1(2) * node_embed_dim]
-        last_output = embed_s_a_all
-        
-        # mask here all nodes that cannot be selected
-        # last_output = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['mask_param'], tf.float32), last_output)
-        # last_output = tf.keras.layers.Masking(mask_value=0.)(last_output)
-        
-        if self.cfg['REG_HIDDEN'] > 0:
-            # [node_cnt, (2)node_embed_dim] * [(2)node_embed_dim, reg_hidden] = [node_cnt, reg_hidden], dense
-            hidden = tf.matmul(embed_s_a_all, h1_weight)
-            
-            # [node_cnt, reg_hidden]
-            last_output = tf.nn.relu(hidden)
-
-        # [node_cnt, reg_hidden] * [reg_hidden, 1] = [node_cnt，1]
-        q_on_all = tf.matmul(last_output, last_w)
-
-        return loss, trainStep, q_pred, q_on_all, tf.trainable_variables(), [covered_embed_padded, masked_covered_embed, cur_state_embed, num_samples, covered_embed_padded_shape, covered_embed_padded_reshaped_shape]   
