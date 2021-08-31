@@ -66,11 +66,114 @@ PrepareBatchGraph::~PrepareBatchGraph()
     avail_edge_cnt.clear();
 }
 
+std::set<int> PrepareBatchGraph::GetToBeDeletedNodes(std::shared_ptr<Graph> g, int num, const int* covered)
+{
+    std::set<int> to_be_deleted_nodes;
+    switch(include_selected_nodes)
+    {
+        case 0:
+        {
+            // delete all nodes that have been selected until this point 
+            for (int i = 0; i < num; ++i)
+            {
+                to_be_deleted_nodes.insert(covered[i]);
+            }
+            break;
+        }
+        case 1:
+        {
+            // include first and last selected node so it is available during network embedding
+            for (int i = 1; i < num-1; ++i)
+            {
+                to_be_deleted_nodes.insert(covered[i]);
+            }
+            break;
+        }
+        case 2:
+        {
+            // keep all nodes and just change node features + edge features later depending on whether node was already chosen
+            // also possibly delete links between selected nodes
+            break;
+        }
+        default:
+            break;
+    }
+    return to_be_deleted_nodes;    
+}
+
+int PrepareBatchGraph::GetNodeStatus(std::shared_ptr<Graph> g, int num, const int* covered, std::vector<int>& idx_map, std::set<int> to_be_deleted_nodes)
+{
+    idx_map.resize(g->num_nodes);
+    for (int i = 0; i < g->num_nodes; ++i)
+    {
+        idx_map[i] = -1;
+    }
+    // number of nodes which are completely uncovered
+    int node_cnt = 0;
+    for (int j = 0; j < (int)g->num_nodes; ++j)
+    {
+        if (to_be_deleted_nodes.count(j) == false)
+        {
+            idx_map[j] = 0;
+            node_cnt++;
+        }
+    }
+    return node_cnt;
+}
+
+int PrepareBatchGraph::GetEdgeStatus(std::shared_ptr<Graph> g, int num, const int* covered, std::set<int> to_be_deleted_nodes)
+{
+    std::set<int> covered_set;
+    for (int i = 0; i < num; ++i)
+    {
+        covered_set.insert(covered[i]);
+    }
+
+    int edge_cnt = 0;
+    for (auto& p : g->edge_list)
+    {
+        edge_cnt += 2;
+        if (ignore_covered_edges == 1)
+        {
+            if (to_be_deleted_nodes.count(p.first) || to_be_deleted_nodes.count(p.second))
+            {
+                edge_cnt -= 2;
+                continue;
+            }
+            if (covered_set.count(p.first) && covered_set.count(p.second))
+            {
+                edge_cnt -= 2;
+            }
+        }
+        else
+        {
+            if (to_be_deleted_nodes.count(p.first) || to_be_deleted_nodes.count(p.second))
+            {
+                edge_cnt -= 2;
+            }
+        }
+    }
+    // add links between subsequent nodes in the current tour
+    if (ignore_covered_edges == 1)
+    {
+        if (num > 1)
+        {
+            edge_cnt += 2 * (num - to_be_deleted_nodes.size());
+        }
+        if (include_selected_nodes == 1 && num >= 2)
+        {
+            edge_cnt -= 4;
+        }
+    }
+    // ignore inner edges between nodes that have already been selected
+    return edge_cnt;
+}
+
 std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int num, const int* covered, 
                                                   std::vector<int>& idx_map)
 // calculates number of available actions
 {
-    std::set<int> to_delete_set;
+    std::set<int> to_be_deleted_nodes;
     std::set<int> covered_set;
     std::vector<int> resultList;
     resultList.resize(2);
@@ -93,7 +196,7 @@ std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int 
             // delete all nodes that have been selected until this point 
             for (int i = 0; i < num; ++i)
             {
-                to_delete_set.insert(covered[i]);
+                to_be_deleted_nodes.insert(covered[i]);
             }
             break;
         }
@@ -102,7 +205,7 @@ std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int 
             // include first and last selected node so it is available during network embedding
             for (int i = 1; i < num-1; ++i)
             {
-                to_delete_set.insert(covered[i]);
+                to_be_deleted_nodes.insert(covered[i]);
             }
             break;
         }
@@ -121,7 +224,7 @@ std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int 
     // iterate over all edges
     for (int j = 0; j < (int)g->num_nodes; ++j)
     {
-        if (to_delete_set.count(j) == false)
+        if (to_be_deleted_nodes.count(j) == false)
         {
             idx_map[j] = 0;
             node_cnt++;
@@ -132,7 +235,7 @@ std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int 
         edge_cnt += 2;
         if (ignore_covered_edges == 1)
         {
-            if (to_delete_set.count(p.first) || to_delete_set.count(p.second))
+            if (to_be_deleted_nodes.count(p.first) || to_be_deleted_nodes.count(p.second))
             {
                 edge_cnt -= 2;
                 continue;
@@ -144,7 +247,7 @@ std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int 
         }
         else
         {
-            if (to_delete_set.count(p.first) || to_delete_set.count(p.second))
+            if (to_be_deleted_nodes.count(p.first) || to_be_deleted_nodes.count(p.second))
             {
                 edge_cnt -= 2;
             }
@@ -155,7 +258,7 @@ std::vector<int> PrepareBatchGraph::GetStatusInfo(std::shared_ptr<Graph> g, int 
     {
         if (num > 1)
         {
-            edge_cnt += 2 * (num - to_delete_set.size());
+            edge_cnt += 2 * (num - to_be_deleted_nodes.size());
         }
         if (include_selected_nodes == 1 && num >= 2)
         {
@@ -437,7 +540,7 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
     auto result_list = n2n_construct(&graph, aggregatorID);
     n2nsum_param = result_list[0];
     laplacian_param = result_list[1];
-    subgsum_param = subg_construct(&graph, subgraph_id_span);
+    subgsum_param = subg_construct(&graph, subgraph_id_span, aggregatorID);
     
     if (embeddingMethod == 2)
     {
@@ -451,7 +554,18 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
         n2esum_param_1 = n2e_result_list[1];
     } 
 }
-
+void PrepareBatchGraph::SetupNodeInput(std::vector<int> idxes,
+                                       std::vector< std::shared_ptr<Graph> > g_list,
+                                       std::vector< std::vector<int> > covered)
+{
+    rep_global = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    start_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    end_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    state_sum_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    state_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    mask_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    idx_map_list.resize(idxes.size());
+}
 
 void PrepareBatchGraph::SetupTrain(std::vector<int> idxes,
                            std::vector< std::shared_ptr<Graph> > g_list,
@@ -621,7 +735,7 @@ std::vector< std::shared_ptr<sparseMatrix> > n2e_construct(GraphStruct* graph)
     return resultList;
 }
 
-std::shared_ptr<sparseMatrix> subg_construct(GraphStruct* graph, std::vector<std::pair<int,int>>& subgraph_id_span)
+std::shared_ptr<sparseMatrix> subg_construct(GraphStruct* graph, std::vector<std::pair<int,int>>& subgraph_id_span, int aggregatorID)
 {
     std::shared_ptr<sparseMatrix> result =std::shared_ptr<sparseMatrix>(new sparseMatrix());
     result->rowNum = graph->num_subgraph;
@@ -637,7 +751,14 @@ std::shared_ptr<sparseMatrix> subg_construct(GraphStruct* graph, std::vector<std
         end  = start + list.size() - 1;
 		for (int j = 0; j < (int)list.size(); ++j)
 		{
-            result->value.push_back(1.0);
+            if (aggregatorID == 1)
+            {
+                result->value.push_back(1.0/(double)list.size());
+            }
+            else
+            {
+                result->value.push_back(1.0);
+            }
             result->rowIndex.push_back(i);
             result->colIndex.push_back(list[j]);
 		}
