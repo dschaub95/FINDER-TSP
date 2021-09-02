@@ -9,7 +9,7 @@ class TSP_loader:
     def __init__(self) -> None:
         pass
     
-    def load_multi_tsp_as_nx(self, data_dir, scale_factor=0.000001, start_index=0, end_index=50000):
+    def load_multi_tsp_as_nx(self, data_dir, scale_factor=0.000001, start_index=0, end_index=np.inf):
         atoi = lambda text : int(text) if text.isdigit() else text
         natural_keys = lambda text : [atoi(c) for c in re.split('(\d+)', text)]
         graph_list = []
@@ -20,7 +20,9 @@ class TSP_loader:
             print('\nBad TSP directory!')
             return graph_list
         fnames = [fname for fname in fnames if 'tsp' in fname]
-        if end_index > len(fnames):
+        if start_index is None:
+            start_index = 0
+        if (end_index is None) or (end_index > len(fnames)):
             end_index = len(fnames)
         for fname in tqdm(fnames[start_index:end_index]):
             index = int(fname.split('.')[0].split('_')[-1])
