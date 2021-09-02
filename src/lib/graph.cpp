@@ -11,6 +11,7 @@ Graph::Graph() : num_nodes(0), num_edges(0), NN_ratio(0)
     edge_list.clear();
     adj_list.clear();
     EdgeWeight.clear();
+    edge_probs.clear();
     node_feats.clear();
 }
 
@@ -19,6 +20,7 @@ Graph::~Graph()
     edge_list.clear();
     adj_list.clear();
     EdgeWeight.clear();
+    edge_probs.clear();
     node_feats.clear();
     num_nodes = 0;
     num_edges = 0;
@@ -26,7 +28,7 @@ Graph::~Graph()
 }
 
 Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, const int* edges_to, 
-             double** _EdgeWeight, double** _node_feats, const double _NN_ratio)
+             double** _EdgeWeight, double** _edge_probs, double** _node_feats, const double _NN_ratio)
         : num_nodes(_num_nodes), num_edges(_num_edges)
 {
     NN_ratio = _NN_ratio;
@@ -34,7 +36,7 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
     adj_list.resize(num_nodes);
     node_feats.resize(num_nodes);
     EdgeWeight.resize(num_nodes, std::vector<double>(num_nodes, 0.0));
-    
+    edge_probs.resize(num_nodes, std::vector<double>(num_nodes, 0.0));
     // calc number of allowed neighbors based on input percent value
     int knn = std::ceil(NN_ratio * (num_nodes - 1));
     
@@ -51,6 +53,7 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
         for (int j = 0; j < num_nodes; ++j)
         {
             EdgeWeight[i][j] = _EdgeWeight[i][j];
+            edge_probs[i][j] = _edge_probs[i][j];
         }
     }
     // check whether the graph has already been truncated (number edges is at least as high as given by the kNN)

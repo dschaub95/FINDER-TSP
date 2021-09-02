@@ -48,6 +48,7 @@ cdef class py_MvcEnv:
         deref(self.inner_Graph).adj_list = _g.adj_list
         deref(self.inner_Graph).node_feats = _g.node_feats
         deref(self.inner_Graph).EdgeWeight = _g.EdgeWeight
+        deref(self.inner_Graph).edge_probs = _g.edge_probs
         deref(self.inner_MvcEnv).s0(self.inner_Graph)
 
     def step(self, int a):
@@ -134,11 +135,13 @@ cdef class py_MvcEnv:
         edge_list = graph1.edge_list
         node_feats = graph1.node_feats
         EdgeWeight = graph1.EdgeWeight
+        edge_probs = graph1.edge_probs
 
         cint_edges_from = np.zeros([num_edges],dtype=np.int32)
         cint_edges_to = np.zeros([num_edges],dtype=np.int32)
         cdouble_vec_node_feats = np.zeros([num_nodes, 2], dtype=np.double)
         cdouble_EdgeWeight = np.zeros([num_nodes, num_nodes], dtype=np.double)
+        cdouble_edge_probs = np.zeros([num_nodes, num_nodes], dtype=np.double)
         # print(num_nodes)
         cdef int i
         for i in range(num_edges):
@@ -149,8 +152,9 @@ cdef class py_MvcEnv:
         for j in range(num_nodes):
              cdouble_vec_node_feats[j,:] = node_feats[j]
              cdouble_EdgeWeight[j,:] = EdgeWeight[j]
+             cdouble_edge_probs[j,:] = edge_probs[j]
         # print("test:", cdouble_vec_node_feats)
-        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_EdgeWeight,
+        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_EdgeWeight, cdouble_edge_probs,
                               cdouble_vec_node_feats, NN_ratio)
 
 def copy_test_environment(test_env):

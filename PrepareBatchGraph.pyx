@@ -55,6 +55,7 @@ cdef class py_PrepareBatchGraph:
             deref(inner_Graph).adj_list = _g.adj_list
             deref(inner_Graph).node_feats = _g.node_feats
             deref(inner_Graph).EdgeWeight = _g.EdgeWeight
+            deref(inner_Graph).edge_probs = _g.edge_probs
             inner_glist.push_back(inner_Graph)
 
         cdef int *refint = <int*>malloc(len(actions)*sizeof(int))
@@ -77,6 +78,7 @@ cdef class py_PrepareBatchGraph:
             deref(inner_Graph).adj_list = _g.adj_list
             deref(inner_Graph).node_feats = _g.node_feats
             deref(inner_Graph).EdgeWeight = _g.EdgeWeight
+            deref(inner_Graph).edge_probs = _g.edge_probs
             inner_glist.push_back(inner_Graph)
         deref(self.inner_PrepareBatchGraph).SetupPredAll(idxes,inner_glist,covered)
 

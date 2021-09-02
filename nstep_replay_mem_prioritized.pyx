@@ -42,11 +42,13 @@ cdef class py_Data:
         edge_list = graph1.edge_list
         node_feats = graph1.node_feats
         EdgeWeight = graph1.EdgeWeight
+        edge_probs = graph1.edge_probs
 
         cint_edges_from = np.zeros([num_edges],dtype=np.int32)
         cint_edges_to = np.zeros([num_edges],dtype=np.int32)
         cdouble_vec_node_feats = np.zeros([num_nodes, 2], dtype=np.double)
         cdouble_EdgeWeight = np.zeros([num_nodes, num_nodes], dtype=np.double)
+        cdouble_edge_probs = np.zeros([num_nodes, num_nodes], dtype=np.double)
         # print(num_nodes)
         cdef int i
         for i in range(num_edges):
@@ -57,8 +59,9 @@ cdef class py_Data:
         for j in range(num_nodes):
              cdouble_vec_node_feats[j,:] = node_feats[j]
              cdouble_EdgeWeight[j,:] = EdgeWeight[j]
+             cdouble_edge_probs[j,:] = edge_probs[j]
         # print("test:", cdouble_vec_node_feats)
-        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_EdgeWeight,
+        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_EdgeWeight, cdouble_edge_probs,
                               cdouble_vec_node_feats, NN_ratio)
 
 
@@ -181,11 +184,13 @@ cdef class py_ReplaySample:
         edge_list = graph1.edge_list
         node_feats = graph1.node_feats
         EdgeWeight = graph1.EdgeWeight
+        edge_probs = graph1.edge_probs
 
         cint_edges_from = np.zeros([num_edges],dtype=np.int32)
         cint_edges_to = np.zeros([num_edges],dtype=np.int32)
         cdouble_vec_node_feats = np.zeros([num_nodes, 2], dtype=np.double)
         cdouble_EdgeWeight = np.zeros([num_nodes, num_nodes], dtype=np.double)
+        cdouble_edge_probs = np.zeros([num_nodes, num_nodes], dtype=np.double)
         # print(num_nodes)
         cdef int i
         for i in range(num_edges):
@@ -196,8 +201,9 @@ cdef class py_ReplaySample:
         for j in range(num_nodes):
              cdouble_vec_node_feats[j,:] = node_feats[j]
              cdouble_EdgeWeight[j,:] = EdgeWeight[j]
+             cdouble_edge_probs[j,:] = edge_probs[j]
         # print("test:", cdouble_vec_node_feats)
-        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_EdgeWeight,
+        return graph.py_Graph(num_nodes, num_edges, cint_edges_from, cint_edges_to, cdouble_EdgeWeight, cdouble_edge_probs,
                               cdouble_vec_node_feats, NN_ratio)
 
 
