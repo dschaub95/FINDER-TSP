@@ -34,7 +34,7 @@ class TSP_loader:
             graph_list.append(g)
         return graph_list
 
-    def load_tsp_as_nx(self, file_path, scale_factor=0.0001):
+    def load_tsp_as_nx(self, file_path, scale_factor=0.000001):
         try:
             problem = tsplib95.load(file_path)
             g = problem.get_graph()

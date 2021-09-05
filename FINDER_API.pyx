@@ -59,6 +59,7 @@ class FINDER_API:
         self.cfg['help_func'] = 0 # whether to use helper function during node insertion process, which inserts node into best position in current partial tour
         self.cfg['reward_normalization'] = 'max'
         self.cfg['reward_sign'] = -1
+        self.cfg['fix_start_node'] = 1
 
         # GNN hyperparameters
         self.cfg['net_type'] = 'AGNN'
@@ -85,7 +86,7 @@ class FINDER_API:
         self.cfg['Alpha'] = 0.001
         self.cfg['save_interval'] = 300
         self.cfg['num_env'] = 1
-        self.cfg['dropout_rate'] = 0.2
+        self.cfg['dropout_rate'] = 0.1
 
         # training set specifications
         self.cfg['g_type'] = 'tsp_2d'
@@ -93,7 +94,7 @@ class FINDER_API:
         self.cfg['NUM_MAX'] = 20
         self.cfg['NN_ratio'] = 1.0
         self.cfg['n_generator'] = 1000
-        self.cfg['train_path'] = 'data/train_sets/synthetic_n_20_50000'
+        self.cfg['train_path'] = None
         self.cfg['train_scale_fac'] = 0.000001
 
         # Decoder hyperparameters
@@ -114,7 +115,7 @@ class FINDER_API:
         self.cfg['eps_step'] = 10000.0
         self.cfg['MEMORY_SIZE'] = 150000
         self.cfg['one_step_encoding'] = 0
-        self.cfg['use_edge_probs'] = 1
+        self.cfg['use_edge_probs'] = 0
 
         # validation set info
         self.cfg['valid_path'] = 'valid_sets/synthetic_nrange_15_20_200/'
@@ -163,6 +164,7 @@ class FINDER_API:
         self.DQN = FINDER(config=self.cfg)
 
     def train(self, save_config=True, save_architecture=True):
+        print(self.cfg)
         if save_config:
             self.save_cur_config()
         if save_architecture:  
@@ -198,28 +200,10 @@ class FINDER_API:
     def load_model(self, ckpt_path):
         self.DQN.LoadModel(ckpt_path)
 
-    def run_test(self, graph_list):
-        lengths = []
-        solutions = []
-        sol_times = []
-        for g in tqdm(graph_list):
-            len, sol, time = self.evaluate(g)
-            lengths.append(len)
-            solutions.append(sol)
-            sol_times.append(time)
+    def run_test(self, test_dir, graph_list=None, scale_factor=0.000001):
+        lengths, solutions, sol_times = self.DQN.Evaluate(test_dir=test_dir, scale_factor=scale_factor)
         return lengths, solutions, sol_times
-
-    def evaluate(self, graph):
-        # reset test set
-        self.DQN.ClearTestGraphs()
-        self.DQN.InsertGraph(graph, is_test=True)
-        t1 = time.time()
-        self.DQN.print_test_results = False
-        len, sol = self.DQN.Test(0)
-        t2 = time.time()
-        sol_time = (t2 - t1)
-        return len, sol, sol_time
-
+    
     def save_train_results(self, model_name='', save_architecture=True):
         g_type = self.cfg['g_type']
         NUM_MIN = self.cfg['NUM_MIN']

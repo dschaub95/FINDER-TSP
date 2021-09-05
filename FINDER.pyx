@@ -537,8 +537,8 @@ class FINDER:
                 
             
             probabilities_list = [self.softmax(q_values) for q_values in list_pred]
-                # print("Qvalues", q_values[0])
-                # print("probabilities", probabilities)
+            # print("Number sequences:", len(sequences))
+            # print("Number probability outputs", len(probabilities_list))
             for i in range(len(sequences)):    
                 cur_env, cur_act, cur_score = sequences[i]
                 possible_actions = [n for n in range(0,num_nodes) if n not in env_states[i]]
@@ -593,6 +593,7 @@ class FINDER:
         # print("Running Predict")
         cdef int n_graphs = len(g_list)
         cdef int i, j, k, bsize
+        full_pred = []
         # print("number of graphs for prediction:", n_graphs)
         for i in range(0, n_graphs, self.cfg['BATCH_SIZE']):
             # makes sure that th indices start at zero for the first batch and go so on for 
@@ -666,7 +667,8 @@ class FINDER:
                     cur_pred[k] = -inf
                 pred.append(cur_pred)
             assert (pos == len(raw_output))
-        return pred
+            full_pred.extend(pred)
+        return full_pred
 
     def prepare_external_inputs(self, prepareBatchGraph):
 
@@ -955,16 +957,40 @@ class FINDER:
     def Update_TestDQN(self):
         self.session.run(self.UpdateTestDQN)
 
-    def Evaluate(self, g):
+    def Evaluate(self, test_dir=None, graph_list=None, scale_factor=None):
+        if scale_factor is None:
+            scale_factor = self.cfg['valid_scale_fac']
+        if graph_list is not None:
+            g_list = graph_list
+        else:
+            print('Loading test graphs...')
+            g_list = self.tsp_loader.load_multi_tsp_as_nx(data_dir=test_dir, 
+                                                          scale_factor=scale_factor, 
+                                                          start_index=0, 
+                                                          end_index=None)
+        if self.cfg['use_edge_probs']:
+            edge_probs = self.prepare_heatmaps(path=f'{test_dir}/heatmaps', 
+                                               num_cycles=None, 
+                                               num_samples_per_cycle=None)
+        else:
+            edge_probs = None
         # reset test set
         self.ClearTestGraphs()
-        self.InsertGraphs([g], is_test=True)
-        t1 = time.time()
+        self.InsertGraphs(g_list, is_test=True, edge_probs=edge_probs)
+        
         self.print_test_results = False
-        len, sol = self.Test(0)
-        t2 = time.time()
-        sol_time = (t2 - t1)
-        return len, sol, sol_time
+        lengths = []
+        solutions = []
+        sol_times = []
+        for idx in tqdm(range(len(g_list))):
+            t1 = time.time()
+            length, sol = self.Test(idx)
+            t2 = time.time()
+            sol_time = (t2 - t1)
+            sol_times.append(sol_time)
+            lengths.append(length)
+            solutions.append(sol)
+        return lengths, solutions, sol_times
     
     def prepare_new_training_graphs(self):
         cdef int NUM_MIN = self.cfg['NUM_MIN']
@@ -1047,6 +1073,7 @@ class FINDER:
                 continue
             if end_index > (num_cycles + 1) * num_samples_per_cycle:
                 continue
+            print(fname)
             if heat_map is not None:
                 heat_map = np.concatenate([heat_map, np.load(f'{path}/{fname}')], axis=0)
             else:
@@ -1082,7 +1109,7 @@ class FINDER:
             B = np.array([0])
             W = np.array([0])
             F = np.array([0])
-        return graph.py_Graph(num_nodes, num_edges, A, B, W, F, NN_ratio)
+        return graph.py_Graph(num_nodes, num_edges, A, B, W, P, F, NN_ratio)
              
 
     def InsertGraphs(self, g_list, is_test, edge_probs=None):

@@ -75,7 +75,8 @@ def prepare_testset_S2VDQN(folder, scale_factor=0.000001):
     # print("Number of loaded test graphs:",len(graph_list))
     return graph_list, fnames
 
-def get_approx_ratios(data_dir, fnames, test_lengths):
+def get_approx_ratios(data_dir, test_lengths):
+    fnames = get_fnames(data_dir)
     true_lengths = []
     len_dict = get_len_dict(data_dir)
     for fname in fnames:
@@ -84,16 +85,28 @@ def get_approx_ratios(data_dir, fnames, test_lengths):
     mean_approx_ratio = np.mean([length[0]/length[1] for length in zip(test_lengths, true_lengths)])
     return approx_ratios, mean_approx_ratio
 
+def get_fnames(dir, search_phrase='tsp'):
+    atoi = lambda text : int(text) if text.isdigit() else text
+    natural_keys = lambda text : [atoi(c) for c in re.split('(\d+)', text)]
+    try:
+        fnames = [f for f in os.listdir(dir) if os.path.isfile(f'{dir}/{f}')]
+        fnames.sort(key=natural_keys)
+    except:
+        print('\nBad directory!')
+    fnames = [fname for fname in fnames if search_phrase in fname]
+    return fnames
+
 def get_len_dict(folder):
     # get lengths
-    with open(folder+'lengths.txt', 'r') as f:
+    with open(f'{folder}/lengths.txt', 'r') as f:
         lines = f.readlines()
         file_names = [line.split(':')[0].strip() for k, line in enumerate(lines)]
         test_lens = [float(line.split(':')[-1].strip()) for k, line in enumerate(lines)]
         len_dict = dict(zip(file_names, test_lens))
     return len_dict
 
-def save_solutions(data_dir, fnames, solutions, model_name, suffix=''):
+def save_solutions(data_dir, solutions, model_name, suffix=''):
+    fnames = get_fnames(data_dir)
     sol_df = pd.DataFrame()
     idx = 0
     tqdm.write("Saving solutions...")
@@ -113,7 +126,8 @@ def save_solutions(data_dir, fnames, solutions, model_name, suffix=''):
     else:
         sol_df.to_csv(f'{result_path}/solutions_{model_name_short}.csv')
 
-def save_lengths(data_dir, fnames, lengths, model_name, suffix=''):
+def save_lengths(data_dir, lengths, model_name, suffix=''):
+    fnames = get_fnames(data_dir)
     lens_df = pd.DataFrame()
     idx = 0
     tqdm.write("Saving solution lengths...")
@@ -133,7 +147,8 @@ def save_lengths(data_dir, fnames, lengths, model_name, suffix=''):
     else:
         lens_df.to_csv(f'{result_path}/tour_lengths_{model_name_short}.csv')
 
-def save_approx_ratios(data_dir, fnames, approx_ratios, model_name, suffix=''):
+def save_approx_ratios(data_dir, approx_ratios, model_name, suffix=''):
+    fnames = get_fnames(data_dir)
     approx_df = pd.DataFrame()
     idx = 0
     tqdm.write("Saving approximation ratios...")
