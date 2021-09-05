@@ -9,9 +9,11 @@ from libc.stdlib cimport free
 cdef class py_MvcEnv:
     cdef shared_ptr[MvcEnv] inner_MvcEnv
     cdef shared_ptr[Graph] inner_Graph
-    def __cinit__(self, double _norm, int _help_func, int _sign):
-        self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(_norm, _help_func, _sign))
-        self.inner_Graph =shared_ptr[Graph](new Graph())
+    
+    def __cinit__(self, double _norm, int _help_func, int _sign, int _fix_start_node):
+        self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(_norm, _help_func, _sign, _fix_start_node))
+        self.inner_Graph = shared_ptr[Graph](new Graph())
+    
     # def __cinit__(self, *args):
     #     cdef int _norm
     #     cdef int _help_func
@@ -89,6 +91,10 @@ cdef class py_MvcEnv:
     @property
     def sign(self):
         return deref(self.inner_MvcEnv).sign
+    
+    @property
+    def fix_start_node(self):
+        return deref(self.inner_MvcEnv).fix_start_node
 
     @property
     def graph(self):
@@ -162,7 +168,8 @@ def copy_test_environment(test_env):
     cdef int NUM_MAX = test_env.norm
     cdef int help_func = test_env.help_func
     cdef int reward_sign = test_env.sign
-    copied_test_env = py_MvcEnv(NUM_MAX, help_func, reward_sign)
+    cdef int fix_start_node = test_env.fix_start_node
+    copied_test_env = py_MvcEnv(NUM_MAX, help_func, reward_sign, fix_start_node)
     copied_test_env.s0(test_env.graph)
     
     for action in test_env.act_seq:

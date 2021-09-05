@@ -138,7 +138,6 @@ class FINDER_API:
             except:
                 print("Error when loading key '{}' from external config file!".format(key))
                 print("Using default value {} instead!".format(self.cfg[key]))
-
         self.DQN = FINDER(config=self.cfg)
     
     def load_test_config(self, config_path):
@@ -201,6 +200,7 @@ class FINDER_API:
         self.DQN.LoadModel(ckpt_path)
 
     def run_test(self, test_dir, graph_list=None, scale_factor=0.000001):
+        print(self.cfg)
         lengths, solutions, sol_times = self.DQN.Evaluate(test_dir=test_dir, scale_factor=scale_factor)
         return lengths, solutions, sol_times
     

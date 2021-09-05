@@ -8,7 +8,7 @@ from graph cimport Graph
 cdef extern from "./src/lib/mvc_env.h":
     cdef cppclass MvcEnv:
         MvcEnv()
-        MvcEnv(double _norm, int _help_func, int _sign)
+        MvcEnv(double _norm, int _help_func, int _sign, int _fix_start_node)
         MvcEnv(shared_ptr[MvcEnv] mvc_env)
         void s0(shared_ptr[Graph] _g)except+
         double step(int a)except+
@@ -22,6 +22,7 @@ cdef extern from "./src/lib/mvc_env.h":
         double norm
         int sign
         int help_func
+        int fix_start_node
         shared_ptr[Graph] graph
         vector[vector[int]]  state_seq
         vector[int] act_seq

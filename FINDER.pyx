@@ -56,7 +56,10 @@ class FINDER:
         cdef int NUM_MAX = self.cfg['NUM_MAX']
         cdef int NUM_MIN = self.cfg['NUM_MIN']
         cdef int num_env = self.cfg['num_env']
-        
+        cdef int help_func = self.cfg['help_func']
+        cdef int reward_sign = self.cfg['reward_sign']
+        cdef int fix_start_node = self.cfg['fix_start_node']
+
         #Simulator
         self.TrainSet = graph.py_GSet() # initializes the training and test set object
         self.TestSet = graph.py_GSet()
@@ -85,18 +88,12 @@ class FINDER:
         else:
             norm = -1
         
-        cdef int help_func = self.cfg['help_func']
-        cdef int reward_sign = self.cfg['reward_sign']
-        
         for i in range(num_env):
-            self.env_list.append(mvc_env.py_MvcEnv(norm, help_func, reward_sign))
+            self.env_list.append(mvc_env.py_MvcEnv(norm, help_func, reward_sign, fix_start_node))
             self.g_list.append(graph.py_Graph())
         
         # stop tf from displaying deprecation warnings
         tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-
-        # for the test env the norm is not used since no reward is calculated
-        self.test_env = mvc_env.py_MvcEnv(NUM_MAX, help_func, reward_sign)
 
         self.set_up_placeholder_dict()
 
@@ -467,11 +464,6 @@ class FINDER:
                 verbose = False
             sol = self.solve_greedy(graph=graph, verbose=verbose)
         
-        # action_sequence = [action for action in best_sequence if action not in self.test_env.state]
-        # for action in action_sequence:
-        #     self.test_env.stepWithoutReward(action)
-        # assert(self.test_env.isTerminal())
-        # sol = self.test_env.state
         if self.print_test_results and gid == 0:
             print(sol)
         nodes = list(range(graph.num_nodes))
@@ -483,6 +475,10 @@ class FINDER:
         return tour_length, solution
 
     def solve_greedy(self, graph, verbose=False):
+        # for the test env the norm is not used since no reward is calculated
+        cdef int help_func = self.cfg['help_func']
+        cdef int fix_start_node = self.cfg['fix_start_node']
+        self.test_env = mvc_env.py_MvcEnv(1, help_func, 1, fix_start_node)
         self.test_env.s0(graph)
         num_nodes = graph.num_nodes
         cdef int step = 0
@@ -510,8 +506,8 @@ class FINDER:
 
     def solve_with_beam_search(self, graph, select_true_best=False):
         cdef int help_func = self.cfg['help_func']
-        cdef int reward_sign = self.cfg['reward_sign']
-        self.test_env_list = [mvc_env.py_MvcEnv(1, help_func, reward_sign) for i in range(self.cfg['beam_width'])]
+        cdef int fix_start_node = self.cfg['fix_start_node']
+        self.test_env_list = [mvc_env.py_MvcEnv(1, help_func, 1, fix_start_node) for i in range(self.cfg['beam_width'])]
         # can be easily batched
         for test_env in self.test_env_list:
             test_env.s0(graph)
