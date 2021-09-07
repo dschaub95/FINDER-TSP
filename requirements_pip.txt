@@ -1,2 +1,16 @@
+cython
+networkx
+pandas
+scipy
+tensorflow-gpu==1.15
+numpy==1.19
+tqdm
+scikit-learn
+scikit-learn-intelex
+jupyter
+notebook
+tensorboardX
+matplotlib
+seaborn
 tsplib95
 fastprogress

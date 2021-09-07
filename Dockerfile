@@ -18,37 +18,14 @@ RUN wget \
     && rm -f Miniconda3-latest-Linux-x86_64.sh 
 RUN conda --version
 
-
-RUN pip install -U --no-cache-dir \
-    numpy \
-    pandas \
-    networkx \
-    matplotlib \
-    seaborn \
-    statsmodels\
-    scipy \
-    tsplib95 \
-    jupyter \
-    notebook 
 RUN conda install pip -y
 
 RUN conda update -y -n base conda
 
-RUN conda create -y --name findervenv python=3.7 
-# RUN conda init bash
-
-SHELL ["conda", "run", "-n", "findervenv", "/bin/bash", "-c"]
-# RUN conda activate findervenv
-
-RUN pip install -U --no-cache-dir \
-    cython==0.29.13 \
-    networkx==2.3 \
-    numpy==1.17.3 \
-    pandas==0.25.2 \
-    scipy==1.3.1 \
-    tensorflow-gpu==1.14.0 \
-    tqdm==4.36.1 \
-    tsplib95
+RUN conda create -y --name FINDER_TSP python=3.7 
+RUN conda init bash
+# SHELL ["conda", "run", "-n", "FINDER_TSP", "/bin/bash", "-c"]
+# RUN conda activate FINDER_TSP
 
 
 # ENV CUDA_HOME=/usr/local/cuda-10.0

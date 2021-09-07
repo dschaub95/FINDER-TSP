@@ -1,9 +1,9 @@
+numpy=1.19
+tensorflow-gpu=1.15
 cython
 networkx
-numpy
 pandas
 scipy
-tensorflow-gpu==1.15
 tqdm
 scikit-learn
 scikit-learn-intelex
@@ -13,6 +13,6 @@ tensorboardX
 matplotlib
 seaborn
 
-# conda install --file requirements_TSP.txt
+# conda install --file requirements_conda.txt
 # conda install pytorch==1.0.1 torchvision==0.2.2 cudatoolkit=10.0 -c pytorch
 # conda create --name FINDER_env python=3.7
