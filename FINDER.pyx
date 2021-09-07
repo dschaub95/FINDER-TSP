@@ -30,7 +30,7 @@ import nstep_replay_mem_prioritized
 import mvc_env
 import pyx_utils
 from py_utils.TSP_loader import TSP_loader
-from attgcn_api import ATTGCN_API
+from FINDER_NN import MLPdecoder
 import tsplib95
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -66,7 +66,6 @@ class FINDER:
         self.inputs = dict()
         self.utils = pyx_utils.pyx_Utils()
         self.tsp_loader = TSP_loader()
-        self.graph_preprocessor = ATTGCN_API()
 
         self.ngraph_train = 0
         self.ngraph_test = 0
@@ -116,27 +115,23 @@ class FINDER:
             with tf.compat.v1.variable_scope('target_DQN'):
                 self.node_embed_target, self.edge_embed_target = self.BuildAGNN_encoder()
 
-                self.state_embed_target = self.BuildAGNN_state_encoder(self.node_embed_target)
+                self.state_embed_target = self.Build_StateEncoder(self.node_embed_target)
 
-                self.q_on_allT, temp_weights = self.BuildAGNN_decoder(self.node_embed_target, self.state_embed_target, repeat_states=True)
-                # self.lossT, self.trainStepT, self.q_predT, self.q_on_allT, self.Q_param_listT = self.BuildAGNN()
-            self.Q_param_listT = tf.compat.v1.trainable_variables(scope='target_DQN')
-            # print("Target DQN params", [tensor.name for tensor in self.Q_param_listT])
-            # print(len(self.Q_param_listT))
+                self.q_on_allT = self.Build_MLPdecoder(self.node_embed_target, self.state_embed_target, repeat_states=True)
 
             self.init_node_embed = None
             
             with tf.compat.v1.variable_scope('test_DQN'):
                 self.node_embed_test, self.edge_embed_test = self.BuildAGNN_encoder()
 
-                self.state_embed_test = self.BuildAGNN_state_encoder(self.placeholder_dict['node_embed_input'])
+                self.state_embed_test = self.Build_StateEncoder(self.placeholder_dict['node_embed_input'])
 
-                self.q_on_all_test, temp_weights = self.BuildAGNN_decoder(self.placeholder_dict['node_embed_input'], self.state_embed_test, repeat_states=True)
+                self.q_on_all_test = self.Build_MLPdecoder(self.placeholder_dict['node_embed_input'], self.state_embed_test, repeat_states=True)
         
             self.test_DQN_params = tf.compat.v1.trainable_variables(scope='test_DQN')
             # print("Test DQN params", [tensor.name for tensor in self.test_DQN_params])
             # print(len(self.test_DQN_params))
-            self.UpdateTestDQN = tf.group(*[a.assign(b) for a,b in zip(self.test_DQN_params, self.Q_param_list)])
+            self.updateTestDQN = tf.group(*[a.assign(b) for a,b in zip(self.test_DQN_params, self.Q_param_list)])
 
             self.target_DQN_params = tf.compat.v1.trainable_variables(scope='target_DQN')
             self.UpdateTargetDQN = tf.group(*[a.assign(b) for a,b in zip(self.target_DQN_params, self.Q_param_list)])
@@ -260,7 +255,7 @@ class FINDER:
             lv = lv + 1
         return cur_node_embed, cur_edge_embed
     
-    def BuildAGNN_state_encoder(self, cur_node_embed):
+    def Build_StateEncoder(self, cur_node_embed):
         if self.cfg['state_representation'] == 2:
             cur_state_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['subgsum_param'], tf.float32), cur_node_embed)
             cur_state_embed = tf.reshape(cur_state_embed, [-1, self.cfg['node_embed_dim']])
@@ -287,43 +282,62 @@ class FINDER:
             cur_state_embed = tf.concat([cur_state_embed, start_node_embed, end_node_embed], axis=1)
         return cur_state_embed
     
-    def BuildAGNN_decoder(self, cur_node_embed, cur_state_embed, weights=None, repeat_states=False):
-        if not weights:
-            if self.cfg['focus_start_end_node']:
-                h1_weight = tf.Variable(tf.truncated_normal([4*self.cfg['node_embed_dim'], self.cfg['REG_HIDDEN']], 
-                                                            stddev=self.cfg['initialization_stddev']), tf.float32)
-            else:
-                h1_weight = tf.Variable(tf.truncated_normal([2*self.cfg['node_embed_dim'], self.cfg['REG_HIDDEN']], 
-                                                            stddev=self.cfg['initialization_stddev']), tf.float32)
-            last_w = tf.Variable(tf.truncated_normal([self.cfg['REG_HIDDEN'], 1], stddev=self.cfg['initialization_stddev']), tf.float32)
-            weights = [h1_weight, last_w]
-        else:
-            h1_weight, last_w = weights
+    # def Build_MLPdecoder(self, cur_node_embed, cur_state_embed, weights=None, repeat_states=False):
+    #     if not weights:
+    #         if self.cfg['focus_start_end_node']:
+    #             h1_weight = tf.Variable(tf.truncated_normal([4*self.cfg['node_embed_dim'], self.cfg['REG_HIDDEN']], 
+    #                                                         stddev=self.cfg['initialization_stddev']), tf.float32)
+    #         else:
+    #             h1_weight = tf.Variable(tf.truncated_normal([2*self.cfg['node_embed_dim'], self.cfg['REG_HIDDEN']], 
+    #                                                         stddev=self.cfg['initialization_stddev']), tf.float32)
+    #         last_w = tf.Variable(tf.truncated_normal([self.cfg['REG_HIDDEN'], 1], stddev=self.cfg['initialization_stddev']), tf.float32)
+    #         weights = [h1_weight, last_w]
+    #     else:
+    #         h1_weight, last_w = weights
         
-        if repeat_states:
-            cur_state_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['rep_global'], tf.float32), cur_state_embed)
+    #     if repeat_states:
+    #         cur_state_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['rep_global'], tf.float32), cur_state_embed)
 
-        embed_s_a = tf.concat([cur_node_embed, cur_state_embed], axis=1)
-        embed_s_a = tf.cond(self.placeholder_dict['is_training'], lambda: tf.nn.dropout(embed_s_a, rate=self.cfg['dropout_rate']), lambda: embed_s_a)
-        # [batch_size, (2)node_embed_dim] * [(2)node_embed_dim, reg_hidden] = [batch_size, reg_hidden], dense
-        hidden = tf.matmul(embed_s_a, h1_weight)
-        # [batch_size, reg_hidden]
-        last_output = tf.nn.relu(hidden)
+    #     embed_s_a = tf.concat([cur_node_embed, cur_state_embed], axis=1)
+    #     embed_s_a = tf.cond(self.placeholder_dict['is_training'], lambda: tf.nn.dropout(embed_s_a, rate=self.cfg['dropout_rate']), lambda: embed_s_a)
+    #     # [batch_size, (2)node_embed_dim] * [(2)node_embed_dim, reg_hidden] = [batch_size, reg_hidden], dense
+    #     hidden = tf.matmul(embed_s_a, h1_weight)
+    #     # [batch_size, reg_hidden]
+    #     last_output = tf.nn.relu(hidden)
 
-         # [batch_size, reg_hidden] * [reg_hidden, 1] = [batch_size, 1]
-        q_pred = tf.matmul(last_output, last_w)
+    #      # [batch_size, reg_hidden] * [reg_hidden, 1] = [batch_size, 1]
+    #     q_pred = tf.matmul(last_output, last_w)
 
-        return q_pred, weights
+    #     return q_pred, weights
+    
+    def Build_MLPdecoder(self, cur_node_embed, cur_state_embed, training=False, 
+                         repeat_states=True, return_decoder=False):
+        cdef int node_embed_dim = self.cfg['node_embed_dim']
+        cdef int state_embed_dim = node_embed_dim
+        if self.cfg['focus_start_end_node']:
+            state_embed_dim = 3 * node_embed_dim
+        decoder = MLPdecoder(placeholder_dict=self.placeholder_dict, state_embed_dim=state_embed_dim, 
+                             node_embed_dim=node_embed_dim, weight_stddev=self.cfg['initialization_stddev'], 
+                             hidden_dim=self.cfg['REG_HIDDEN'], rate=self.cfg['dropout_rate'])
+        q_pred = decoder(cur_node_embed, cur_state_embed, training, repeat_states)
+        if return_decoder:
+            return q_pred, decoder
+        else:
+            return q_pred
+
+    def Build_MHAdecoder(self, cur_node_embed, cur_state_embed, training=False, 
+                         repeat_states=True, return_decoder=False):
+        pass
 
     def BuildAGNN(self):
         with tf.compat.v1.variable_scope('encoder'):
             cur_node_embed, cur_edge_embed = self.BuildAGNN_encoder()
         with tf.compat.v1.variable_scope('state_encoder'):
-            cur_state_embed = self.BuildAGNN_state_encoder(cur_node_embed)
+            cur_state_embed = self.Build_StateEncoder(cur_node_embed)
         # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
         action_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['action_select'], tf.float32), cur_node_embed)
         with tf.compat.v1.variable_scope('decoder'):
-            q_pred, decoder_weights = self.BuildAGNN_decoder(action_embed, cur_state_embed)
+            q_pred, decoder = self.Build_MLPdecoder(action_embed, cur_state_embed, training=True, repeat_states=False, return_decoder=True)
 
         if self.cfg['IsPrioritizedSampling']:
             self.TD_errors = tf.reduce_sum(tf.abs(self.placeholder_dict['target'] - q_pred), axis=1)    # for updating Sumtree
@@ -341,7 +355,7 @@ class FINDER:
 
         trainStep = tf.compat.v1.train.AdamOptimizer(self.cfg['LEARNING_RATE']).minimize(loss)
 
-        q_on_all, decoder_weights = self.BuildAGNN_decoder(cur_node_embed, cur_state_embed, weights=decoder_weights, repeat_states=True)
+        q_on_all = decoder(cur_node_embed, cur_state_embed, training=False, repeat_states=True)
 
         return loss, trainStep, q_pred, q_on_all, tf.compat.v1.trainable_variables()
 
@@ -379,7 +393,7 @@ class FINDER:
             self.PlayGame(100, 1)
         
         self.TakeSnapShot()
-        self.Update_TestDQN()
+        self.UpdateTestDQN()
         
         #save_dir = './models/%s'%self.cfg['g_type']
         save_dir = './models/{}/nrange_{}_{}'.format(self.cfg['g_type'], NUM_MIN, NUM_MAX)
@@ -416,7 +430,7 @@ class FINDER:
                 else:
                     N_start = N_end
                 frac = 0.0
-                self.Update_TestDQN()
+                self.UpdateTestDQN()
                 tqdm.write("Running test...")
                 test_start = time.time()
                 for idx in tqdm(range(n_valid)):
@@ -950,8 +964,8 @@ class FINDER:
         # print("Taking snapshot")
         self.session.run(self.UpdateTargetDQN)
     
-    def Update_TestDQN(self):
-        self.session.run(self.UpdateTestDQN)
+    def UpdateTestDQN(self):
+        self.session.run(self.updateTestDQN)
 
     def Evaluate(self, test_dir=None, graph_list=None, scale_factor=None):
         if scale_factor is None:
@@ -1110,11 +1124,7 @@ class FINDER:
 
     def InsertGraphs(self, g_list, is_test, edge_probs=None):
         cdef int t
-        # insert prbability calculation here
-        # self.graph_preprocessor.init_net()
-        # self.graph_preprocessor.load_ckpt()
-        # self.graph_preprocessor.load_nx_test_set(graph_list=g_list, num_nodes=20)
-        # result = self.graph_preprocessor.run_test(batch_size=250)
+        # insert prbability calculation here --> precalculate instead
         for k, g in enumerate(g_list):
             if edge_probs is not None:
                 edge_prob = edge_probs[k]
@@ -1128,10 +1138,6 @@ class FINDER:
                 t = self.ngraph_train
                 self.ngraph_train += 1
                 self.TrainSet.InsertGraph(t, self.GenNetwork(g, edge_prob=edge_prob))
-        
-        # self.graph_preprocessor.clear_gpu_memory()
-        # del self.graph_preprocessor.net
-        # gc.collect()
 
     def ClearTrainGraphs(self):
         self.ngraph_train = 0
