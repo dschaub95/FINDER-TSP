@@ -12,7 +12,7 @@
 
 class sparseMatrix
 {
- public:
+public:
     sparseMatrix();
     ~sparseMatrix();
     std::vector<int> rowIndex;
@@ -24,7 +24,9 @@ class sparseMatrix
 
 class PrepareBatchGraph{
 public:
-    PrepareBatchGraph(int _aggregatorID, int _node_init_dim, int _edge_init_dim, int _ignore_covered_edges, int _include_selected_nodes, int embeddingMethod);
+    PrepareBatchGraph(int _aggregatorID, int _node_init_dim, int _edge_init_dim, int _ignore_covered_edges, 
+                      int _include_selected_nodes, int embeddingMethod, int _max_nodes);
+    
     ~PrepareBatchGraph();
     
     void SetupGraphInput(std::vector<int> idxes,
@@ -38,7 +40,7 @@ public:
     void SetupPredAll(std::vector<int> idxes,
                       std::vector< std::shared_ptr<Graph> > g_list,
                       std::vector< std::vector<int> > covered);
-    void SetupNodeInput(std::vector<int> idxes,
+    void SetupNodeLevelInput(std::vector<int> idxes,
                         std::vector< std::shared_ptr<Graph> > g_list,
                         std::vector< std::vector<int> > covered);
 
@@ -57,9 +59,12 @@ public:
     std::shared_ptr<sparseMatrix> subgsum_param;
     std::shared_ptr<sparseMatrix> start_param;
     std::shared_ptr<sparseMatrix> end_param;
+    std::shared_ptr<sparseMatrix> agg_state_param;
     std::shared_ptr<sparseMatrix> state_sum_param;
     std::shared_ptr<sparseMatrix> state_param;
     std::shared_ptr<sparseMatrix> mask_param;
+    std::shared_ptr<sparseMatrix> pad_node_param;
+    std::shared_ptr<sparseMatrix> pad_reverse_param;
 
     std::vector< std::vector< int > > idx_map_list;
     std::vector< std::pair< int,int > > subgraph_id_span;
@@ -79,6 +84,7 @@ public:
     int embeddingMethod;
     int node_init_dim; 
     int edge_init_dim;
+    int max_nodes;
 
     std::vector<std::shared_ptr<sparseMatrix>> n2n_construct(GraphStruct* graph, int aggregatorID);
 };

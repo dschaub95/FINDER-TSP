@@ -16,7 +16,8 @@ sparseMatrix::~sparseMatrix()
     value.clear();
 }
 
- PrepareBatchGraph::PrepareBatchGraph(int _aggregatorID, int _node_init_dim, int _edge_init_dim, int _ignore_covered_edges, int _include_selected_nodes, int _embeddingMethod)
+ PrepareBatchGraph::PrepareBatchGraph(int _aggregatorID, int _node_init_dim, int _edge_init_dim, int _ignore_covered_edges, 
+                                      int _include_selected_nodes, int _embeddingMethod, int _max_nodes)
 {
     aggregatorID = _aggregatorID;
     node_init_dim = _node_init_dim;
@@ -24,6 +25,7 @@ sparseMatrix::~sparseMatrix()
     include_selected_nodes = _include_selected_nodes;
     ignore_covered_edges = _ignore_covered_edges;
     embeddingMethod = _embeddingMethod;
+    max_nodes = _max_nodes;
     
     idx_map_list.clear();
     node_feats.clear();
@@ -42,6 +44,7 @@ PrepareBatchGraph::~PrepareBatchGraph()
     ignore_covered_edges = -1;
     include_selected_nodes = -1;
     embeddingMethod = -1;
+    max_nodes = -1;
     
     act_select = nullptr;
     rep_global = nullptr;
@@ -53,9 +56,12 @@ PrepareBatchGraph::~PrepareBatchGraph()
     n2esum_param_1 = nullptr;
     start_param = nullptr;
     end_param = nullptr;
+    agg_state_param = nullptr;
     state_sum_param = nullptr;
     state_param = nullptr;
     mask_param = nullptr;
+    pad_node_param = nullptr;
+    pad_reverse_param = nullptr;
 
     idx_map_list.clear();
     node_feats.clear();
@@ -280,9 +286,12 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
     rep_global = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     start_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     end_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    agg_state_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     state_sum_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     state_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     mask_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    pad_node_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    pad_reverse_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     // idxes.size() = BATCHSIZE, vector of vectors
     idx_map_list.resize(idxes.size());
     // simple vector < int >
@@ -291,7 +300,6 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
 
     int node_cnt = 0;
     int edge_cnt = 0;
-    int max_nodes = 0;
     for (int i = 0; i < (int)idxes.size(); ++i)
     {   
         // possibility to include more handcrafted features
@@ -300,11 +308,6 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
         aux_feat.push_back(temp_feat);
 
         auto g = g_list[idxes[i]];
-        // get the maximum number of nodes of a graph in the batch
-        if (g->num_nodes > max_nodes)
-        {
-            max_nodes = g->num_nodes;
-        }
         // calc counter, twohop_number and threehop_number + avail
         auto resultStatus = GetStatusInfo(g, covered[idxes[i]].size(), covered[idxes[i]].data(), idx_map_list[i]);
         avail_node_cnt[i] = resultStatus[0];
@@ -339,6 +342,9 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
 
     end_param->rowNum = idxes.size();
     end_param->colNum = node_cnt;
+    
+    agg_state_param->rowNum = idxes.size();
+    agg_state_param->colNum = node_cnt;
 
     state_sum_param->rowNum = idxes.size();
     state_sum_param->colNum = node_cnt;
@@ -348,6 +354,12 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
 
     mask_param->rowNum = node_cnt;
     mask_param->colNum = node_cnt;
+
+    pad_node_param->rowNum = max_nodes * idxes.size();
+    pad_node_param->colNum = node_cnt;
+    
+    pad_reverse_param->rowNum = node_cnt;
+    pad_reverse_param->colNum = max_nodes * idxes.size();
 
     node_cnt = 0;
     edge_cnt = 0;
@@ -406,6 +418,29 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
             rep_global->rowIndex.push_back(node_cnt + t);
             rep_global->colIndex.push_back(i);
             rep_global->value.push_back(1.0);
+            // check wether node is part of the invariant node set
+            if (!c.count(j) || j == last_node || j == start_node)
+            {
+                agg_state_param->rowIndex.push_back(i);
+                agg_state_param->colIndex.push_back(node_cnt + t);
+                if (c.size() > 2)
+                {
+                    agg_state_param->value.push_back(1/(double)(g->num_nodes - c.size() + 2));
+                }
+                else 
+                {
+                    agg_state_param->value.push_back(1/(double)(g->num_nodes));
+                }
+                // pad all present node embeddings such that they can be easily batched
+                pad_node_param->rowIndex.push_back(i * max_nodes + t);
+                pad_node_param->colIndex.push_back(node_cnt + t);
+                pad_node_param->value.push_back(1.0);
+
+                pad_reverse_param->rowIndex.push_back(node_cnt + t);
+                pad_reverse_param->colIndex.push_back(i * max_nodes + t);
+                pad_reverse_param->value.push_back(1.0);
+
+            }
             // create matrices to extract the embeddings of both the last selected and the start node
             if (j == start_node)
             {
@@ -419,6 +454,7 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
                 end_param->colIndex.push_back(node_cnt + t);
                 end_param->value.push_back(1.0);
             }
+            // check whether node has been already selected
             if (c.count(j))
             {
                 state_sum_param->rowIndex.push_back(i);
@@ -469,13 +505,15 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
             auto x = idx_map[p.first] + node_cnt, y = idx_map[p.second] + node_cnt;
             // add code to determine edge weight corresponding to the current edge
             double edge_weight = g->EdgeWeight[p.first][p.second];
+            double edge_probability = g->edge_probs[p.first][p.second];
             // printf("Index x: %d, Index y: %d\n", x, y);
             graph.AddEdge(edge_cnt, x, y, edge_weight);
             edge_feats[edge_cnt][0] = edge_weight;
-            if (edge_init_dim > 2)
+            edge_feats[edge_cnt][1] = edge_probability;
+            if (edge_init_dim > 3)
             {
-                edge_feats[edge_cnt][1] = (double) (c.count(p.first) ^ c.count(p.second));
-                edge_feats[edge_cnt][2] = (double) c.count(p.first);
+                edge_feats[edge_cnt][2] = (double) (c.count(p.first) ^ c.count(p.second));
+                edge_feats[edge_cnt][3] = (double) c.count(p.first);
             }
             
             // edge_feats[edge_cnt][3] = y;
@@ -483,11 +521,11 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
             edge_cnt += 1;
             graph.AddEdge(edge_cnt, y, x, edge_weight);
             edge_feats[edge_cnt][0] = edge_weight;
-            
-            if (edge_init_dim > 2)
+            edge_feats[edge_cnt][1] = edge_probability;
+            if (edge_init_dim > 3)
             {
-                edge_feats[edge_cnt][1] = (double) (c.count(p.first) ^ c.count(p.second));
-                edge_feats[edge_cnt][2] = (double) c.count(p.second);
+                edge_feats[edge_cnt][2] = (double) (c.count(p.first) ^ c.count(p.second));
+                edge_feats[edge_cnt][3] = (double) c.count(p.second);
             }
             
             // edge_feats[edge_cnt][3] = y;
@@ -513,20 +551,24 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
                     auto x = idx_map[n_c] + node_cnt, y = idx_map[next_c] + node_cnt;
                     // add code to determine edge weight corresponding to the current edge
                     double edge_weight = g->EdgeWeight[n_c][next_c];
+                    double edge_probability = g->edge_probs[n_c][next_c];
+                    
                     graph.AddEdge(edge_cnt, x, y, edge_weight);
                     edge_feats[edge_cnt][0] = edge_weight;
-                    if (edge_init_dim > 2)
+                    edge_feats[edge_cnt][1] = edge_probability;
+                    if (edge_init_dim > 3)
                     {
-                        edge_feats[edge_cnt][1] = 0.0;
-                        edge_feats[edge_cnt][2] = 1.0;
+                        edge_feats[edge_cnt][2] = 0.0;
+                        edge_feats[edge_cnt][3] = 1.0;
                     }
                     edge_cnt += 1;
                     graph.AddEdge(edge_cnt, y, x, edge_weight);
                     edge_feats[edge_cnt][0] = edge_weight;
-                    if (edge_init_dim > 2)
+                    edge_feats[edge_cnt][1] = edge_probability;
+                    if (edge_init_dim > 3)
                     {
-                        edge_feats[edge_cnt][1] = 0.0;
-                        edge_feats[edge_cnt][2] = 1.0;
+                        edge_feats[edge_cnt][2] = 0.0;
+                        edge_feats[edge_cnt][3] = 1.0;
                     }
                     edge_cnt += 1;
                 }
@@ -554,16 +596,19 @@ void PrepareBatchGraph::SetupGraphInput(std::vector<int> idxes,
         n2esum_param_1 = n2e_result_list[1];
     } 
 }
-void PrepareBatchGraph::SetupNodeInput(std::vector<int> idxes,
+void PrepareBatchGraph::SetupNodeLevelInput(std::vector<int> idxes,
                                        std::vector< std::shared_ptr<Graph> > g_list,
                                        std::vector< std::vector<int> > covered)
 {
     rep_global = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     start_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     end_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    agg_state_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     state_sum_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     state_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     mask_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    pad_node_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
+    pad_reverse_param = std::shared_ptr<sparseMatrix>(new sparseMatrix());
     idx_map_list.resize(idxes.size());
 }
 
@@ -661,7 +706,6 @@ std::vector<std::shared_ptr<sparseMatrix>> PrepareBatchGraph::n2n_construct(Grap
 		}
         // add the sum of all edge weights to neighbouring nodes
         edge_sum[i][0] = edge_weight_sum;
-        // node_feats[i][4] = edge_weight_sum;
 	}
 	resultList[0] = result;
 	resultList[1] = result_laplacian;
