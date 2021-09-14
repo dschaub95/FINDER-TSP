@@ -16,7 +16,7 @@ edge_embed_dim = 64 # dimension q for each vector embedding of the edges in the 
 state_embed_dim = 128
 embeddingMethod = 3 # 0:no inclusion of edge weights, 1:inclusion of sum of edge weights per node, 2:S2V-DQN edge weight inclusion 3:Changjun edge embeding, default value 2
 ignore_covered_edges = False # whether to ignore edges of which both adjacent nodes have already been selected, default value false
-selected_nodes_inclusion = 1 # 0:no inclusion of selected nodes, 1:start and last selected node inclusion, 2:all selected nodes included, default value 2
+selected_nodes_inclusion = 2 # 0:no inclusion of selected nodes, 1:start and last selected node inclusion, 2:all selected nodes included, default value 2
 focus_start_end_node = True # whether to specifically include start and end node embedding in the state and decoding process
 state_representation = 1 # 0:concat state, 1:MHA state
 
