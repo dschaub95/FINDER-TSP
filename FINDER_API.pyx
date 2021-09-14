@@ -71,6 +71,7 @@ class FINDER_API:
         # self.cfg['state_embed_dim'] = 64
         self.cfg['node_embed_dim'] = 64
         self.cfg['edge_embed_dim'] = 64
+        self.cfg['state_embed_dim'] = 64
         self.cfg['embeddingMethod'] = 2
         self.cfg['ignore_covered_edges'] = 0 
         self.cfg['selected_nodes_inclusion'] = 2
@@ -98,7 +99,7 @@ class FINDER_API:
         self.cfg['train_scale_fac'] = 0.000001
 
         # Decoder hyperparameters
-        self.cfg['decoder'] = 0
+        self.cfg['decoder_type'] = 0
         self.cfg['REG_HIDDEN'] = 32
         
         # search startegy
@@ -204,7 +205,7 @@ class FINDER_API:
         lengths, solutions, sol_times = self.DQN.Evaluate(test_dir=test_dir, scale_factor=scale_factor)
         return lengths, solutions, sol_times
     
-    def save_train_results(self, model_name='', save_architecture=True):
+    def save_train_results(self, model_name='', save_architecture=True, only_save_best_model=False):
         g_type = self.cfg['g_type']
         NUM_MIN = self.cfg['NUM_MIN']
         NUM_MAX = self.cfg['NUM_MAX']

@@ -13,6 +13,7 @@ random.seed(7)
 import scipy.linalg as linalg
 from scipy.sparse import csr_matrix
 from itertools import combinations
+import tsplib95
 
 from distutils.util import strtobool
 from tqdm import tqdm
@@ -23,6 +24,7 @@ import os
 import re
 import gc
 
+
 import PrepareBatchGraph
 import graph
 import nstep_replay_mem
@@ -30,8 +32,9 @@ import nstep_replay_mem_prioritized
 import mvc_env
 import pyx_utils
 from py_utils.TSP_loader import TSP_loader
-from FINDER_NN import MLPdecoder
-import tsplib95
+from dqn.FINDER_decoder import MLPdecoder, AttentionDecoder
+from dqn.FINDER_state_encoder import MHAStateEncoder, BasicStateEncoder
+
 
 np.set_printoptions(threshold=sys.maxsize)
 # fix seeds for graph generation and weight init
@@ -94,14 +97,25 @@ class FINDER:
         # stop tf from displaying deprecation warnings
         tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
-        self.set_up_placeholder_dict()
+        self.setup_placeholder_dict()
 
         if self.cfg['IsPrioritizedSampling']:
             self.ISWeights = tf.placeholder(tf.float32, [self.cfg['BATCH_SIZE'], 1], name='IS_weights')
 
         if self.cfg['net_type'] == 'AGNN':
             assert(self.cfg['REG_HIDDEN'] > 0)
-            self.cfg['embeddingMethod'] = 3 # makes sure all relevant aggregation matrices are calculated
+            self.cfg['embeddingMethod'] = 3 # make sure all relevant aggregation matrices are calculated
+            # set the state encoder
+            if self.cfg['state_representation'] == 0:
+                self.state_encoder = self.Build_BasicStateEncoder
+            elif self.cfg['state_representation'] == 1:
+                self.state_encoder = self.Build_MHAStateEncoder
+            # set the decoder
+            if self.cfg['decoder_type'] == 0:
+                self.decoder = self.Build_MLPdecoder
+            elif self.cfg['decoder_type'] == 1:
+                self.decoder = self.Build_AttentionDecoder
+
             self.placeholder_dict['node_embed_input'] = tf.placeholder(tf.float32, name='node_embed_input')
             self.placeholder_dict['state_embed_input'] = tf.placeholder(tf.float32, name='state_embed_input')
             # init Q network
@@ -115,18 +129,20 @@ class FINDER:
             with tf.compat.v1.variable_scope('target_DQN'):
                 self.node_embed_target, self.edge_embed_target = self.BuildAGNN_encoder()
 
-                self.state_embed_target = self.Build_StateEncoder(self.node_embed_target)
+                # self.state_embed_target = self.Build_StateEncoder(self.node_embed_target)
+                self.state_embed_target = self.state_encoder(self.node_embed_target, training=False)
 
-                self.q_on_allT = self.Build_MLPdecoder(self.node_embed_target, self.state_embed_target, repeat_states=True)
+                self.q_on_allT = self.decoder(self.state_embed_target, self.node_embed_target)
 
             self.init_node_embed = None
             
             with tf.compat.v1.variable_scope('test_DQN'):
                 self.node_embed_test, self.edge_embed_test = self.BuildAGNN_encoder()
 
-                self.state_embed_test = self.Build_StateEncoder(self.placeholder_dict['node_embed_input'])
+                # self.state_embed_test = self.Build_StateEncoder(self.placeholder_dict['node_embed_input'])
+                self.state_embed_test = self.state_encoder(self.placeholder_dict['node_embed_input'], training=False)
 
-                self.q_on_all_test = self.Build_MLPdecoder(self.placeholder_dict['node_embed_input'], self.state_embed_test, repeat_states=True)
+                self.q_on_all_test = self.decoder(self.state_embed_test, self.placeholder_dict['node_embed_input'])
         
             self.test_DQN_params = tf.compat.v1.trainable_variables(scope='test_DQN')
             # print("Test DQN params", [tensor.name for tensor in self.test_DQN_params])
@@ -156,7 +172,6 @@ class FINDER:
                                 intra_op_parallelism_threads=100,
                                 log_device_placement=False)
         config.gpu_options.allow_growth = True
-        config.gpu_options.per_process_gpu_memory_fraction = 0.6
         self.session = tf.Session(config=config)
 
         # self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
@@ -255,89 +270,68 @@ class FINDER:
             lv = lv + 1
         return cur_node_embed, cur_edge_embed
     
-    def Build_StateEncoder(self, cur_node_embed):
-        if self.cfg['state_representation'] == 2:
-            cur_state_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['subgsum_param'], tf.float32), cur_node_embed)
-            cur_state_embed = tf.reshape(cur_state_embed, [-1, self.cfg['node_embed_dim']])
-        elif self.cfg['state_representation'] == 1:
-            # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
-            cur_state_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['state_sum_param'], tf.float32), cur_node_embed)
-            cur_state_embed = tf.reshape(cur_state_embed, [-1, self.cfg['node_embed_dim']])
-        elif self.cfg['state_representation'] == 3:
-            num_samples = tf.shape(self.placeholder_dict['subgsum_param'])[0]
-            covered_embed_padded = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['state_param'], tf.float32), cur_node_embed)
-            covered_embed_padded_reshaped = tf.reshape(covered_embed_padded, [num_samples, -1, self.cfg['node_embed_dim']])
-            masked_covered_embed = tf.keras.layers.Masking(mask_value=0.)(covered_embed_padded_reshaped)
-            
-            RNN_cell = tf.keras.layers.LSTMCell(units=64)
-            RNN_layer = tf.keras.layers.RNN(cell=RNN_cell, return_state=True, return_sequences=True)
-            
-            whole_seq_output, final_memory_state, final_carry_state = RNN_layer(masked_covered_embed)
-            cur_state_embed = final_carry_state
-
-        if self.cfg['focus_start_end_node']:
-            # [batch_size, node_embed_dim], explitcitly extract the start and end node embeddings
-            start_node_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['start_param'], tf.float32), cur_node_embed)
-            end_node_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['end_param'], tf.float32), cur_node_embed) 
-            cur_state_embed = tf.concat([cur_state_embed, start_node_embed, end_node_embed], axis=1)
-        return cur_state_embed
-    
-    # def Build_MLPdecoder(self, cur_node_embed, cur_state_embed, weights=None, repeat_states=False):
-    #     if not weights:
-    #         if self.cfg['focus_start_end_node']:
-    #             h1_weight = tf.Variable(tf.truncated_normal([4*self.cfg['node_embed_dim'], self.cfg['REG_HIDDEN']], 
-    #                                                         stddev=self.cfg['initialization_stddev']), tf.float32)
-    #         else:
-    #             h1_weight = tf.Variable(tf.truncated_normal([2*self.cfg['node_embed_dim'], self.cfg['REG_HIDDEN']], 
-    #                                                         stddev=self.cfg['initialization_stddev']), tf.float32)
-    #         last_w = tf.Variable(tf.truncated_normal([self.cfg['REG_HIDDEN'], 1], stddev=self.cfg['initialization_stddev']), tf.float32)
-    #         weights = [h1_weight, last_w]
-    #     else:
-    #         h1_weight, last_w = weights
-        
-    #     if repeat_states:
-    #         cur_state_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['rep_global'], tf.float32), cur_state_embed)
-
-    #     embed_s_a = tf.concat([cur_node_embed, cur_state_embed], axis=1)
-    #     embed_s_a = tf.cond(self.placeholder_dict['is_training'], lambda: tf.nn.dropout(embed_s_a, rate=self.cfg['dropout_rate']), lambda: embed_s_a)
-    #     # [batch_size, (2)node_embed_dim] * [(2)node_embed_dim, reg_hidden] = [batch_size, reg_hidden], dense
-    #     hidden = tf.matmul(embed_s_a, h1_weight)
-    #     # [batch_size, reg_hidden]
-    #     last_output = tf.nn.relu(hidden)
-
-    #      # [batch_size, reg_hidden] * [reg_hidden, 1] = [batch_size, 1]
-    #     q_pred = tf.matmul(last_output, last_w)
-
-    #     return q_pred, weights
-    
-    def Build_MLPdecoder(self, cur_node_embed, cur_state_embed, training=False, 
-                         repeat_states=True, return_decoder=False):
+    def Build_BasicStateEncoder(self, node_embed, training=False):
         cdef int node_embed_dim = self.cfg['node_embed_dim']
-        cdef int state_embed_dim = node_embed_dim
-        if self.cfg['focus_start_end_node']:
-            state_embed_dim = 3 * node_embed_dim
+        cdef int state_embed_dim = self.cfg['state_embed_dim']
+        self.cfg['state_embed_dim'] = 3 * self.cfg['node_embed_dim']
+        state_encoder = BasicStateEncoder(placeholder_dict=self.placeholder_dict, state_embed_dim=state_embed_dim, 
+                                          node_embed_dim=node_embed_dim)
+        state_embed = state_encoder(node_embed)
+        return state_embed
+
+    def Build_MHAStateEncoder(self, node_embed, training=False):
+        cdef int node_embed_dim = self.cfg['node_embed_dim']
+        cdef int state_embed_dim = self.cfg['state_embed_dim']
+        cdef int NUM_MAX = self.cfg['NUM_MAX']
+        cdef double dropout_rate = self.cfg['dropout_rate']
+        state_encoder = MHAStateEncoder(placeholder_dict=self.placeholder_dict, state_embed_dim=state_embed_dim, 
+                                        node_embed_dim=node_embed_dim, num_heads=8, max_nodes=NUM_MAX, d_model=128,
+                                        rate=dropout_rate)
+        state_embed = state_encoder(node_embed, training=training)
+        return state_embed
+    
+    def Build_MLPdecoder(self, state_embed, node_embed, q_on_all=True, training=False, return_decoder=False):
+        cdef int node_embed_dim = self.cfg['node_embed_dim']
+        cdef int state_embed_dim = self.cfg['state_embed_dim']
+        cdef double dropout_rate = self.cfg['dropout_rate']
         decoder = MLPdecoder(placeholder_dict=self.placeholder_dict, state_embed_dim=state_embed_dim, 
                              node_embed_dim=node_embed_dim, weight_stddev=self.cfg['initialization_stddev'], 
-                             hidden_dim=self.cfg['REG_HIDDEN'], rate=self.cfg['dropout_rate'])
-        q_pred = decoder(cur_node_embed, cur_state_embed, training, repeat_states)
+                             hidden_dim=self.cfg['REG_HIDDEN'], rate=dropout_rate)
+        q_pred = decoder(state_embed, node_embed, q_on_all=q_on_all, training=training) # Q(s,a)
         if return_decoder:
             return q_pred, decoder
         else:
             return q_pred
 
-    def Build_MHAdecoder(self, cur_node_embed, cur_state_embed, training=False, 
-                         repeat_states=True, return_decoder=False):
-        pass
+    def Build_AttentionDecoder(self, state_embed, node_embed, q_on_all=True, training=False, return_decoder=False):
+        cdef int node_embed_dim = self.cfg['node_embed_dim']
+        cdef int state_embed_dim = self.cfg['state_embed_dim']
+        cdef int NUM_MAX = self.cfg['NUM_MAX']
+        cdef double dropout_rate = self.cfg['dropout_rate']
+        decoder = AttentionDecoder(placeholder_dict=self.placeholder_dict, state_embed_dim=state_embed_dim, 
+                                   node_embed_dim=node_embed_dim, max_nodes=NUM_MAX, d_model=128, 
+                                   use_biases=False, rate=dropout_rate)
+        q_pred = decoder(state_embed, node_embed, q_on_all=q_on_all, training=training) # Q(s,a)
+        if return_decoder:
+            return q_pred, decoder
+        else:
+            return q_pred
 
     def BuildAGNN(self):
         with tf.compat.v1.variable_scope('encoder'):
-            cur_node_embed, cur_edge_embed = self.BuildAGNN_encoder()
+            node_embed, cur_edge_embed = self.BuildAGNN_encoder()
+        
         with tf.compat.v1.variable_scope('state_encoder'):
-            cur_state_embed = self.Build_StateEncoder(cur_node_embed)
-        # [batch_size, node_cnt] * [node_cnt, node_embed_dim] = [batch_size, node_embed_dim]
-        action_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['action_select'], tf.float32), cur_node_embed)
+            # state_embed = self.Build_StateEncoder(node_embed)
+            state_embed = self.state_encoder(node_embed, training=True)
+        
+        with tf.compat.v1.variable_scope('action_encoder'):
+            # potential action encoding
+            action_embed = node_embed
+        
         with tf.compat.v1.variable_scope('decoder'):
-            q_pred, decoder = self.Build_MLPdecoder(action_embed, cur_state_embed, training=True, repeat_states=False, return_decoder=True)
+            reduced_action_embed = tf.sparse.sparse_dense_matmul(tf.cast(self.placeholder_dict['action_select'], tf.float32), action_embed)
+            q_pred, decoder = self.decoder(state_embed, reduced_action_embed, q_on_all=False, training=True, return_decoder=True)
 
         if self.cfg['IsPrioritizedSampling']:
             self.TD_errors = tf.reduce_sum(tf.abs(self.placeholder_dict['target'] - q_pred), axis=1)    # for updating Sumtree
@@ -354,8 +348,8 @@ class FINDER:
         loss = loss_rl
 
         trainStep = tf.compat.v1.train.AdamOptimizer(self.cfg['LEARNING_RATE']).minimize(loss)
-
-        q_on_all = decoder(cur_node_embed, cur_state_embed, training=False, repeat_states=True)
+        # repeat states to calc q_values for all actions
+        q_on_all = decoder(state_embed, action_embed, q_on_all=True, training=False)
 
         return loss, trainStep, q_pred, q_on_all, tf.compat.v1.trainable_variables()
 
@@ -518,7 +512,7 @@ class FINDER:
             step += 1
         return self.test_env.state
 
-    def solve_with_beam_search(self, graph, select_true_best=False):
+    def solve_with_beam_search(self, graph, select_true_best=False, only_use_cur_qvalue=False):
         cdef int help_func = self.cfg['help_func']
         cdef int fix_start_node = self.cfg['fix_start_node']
         self.test_env_list = [mvc_env.py_MvcEnv(1, help_func, 1, fix_start_node) for i in range(self.cfg['beam_width'])]
@@ -530,7 +524,6 @@ class FINDER:
         sequences = [[self.test_env_list[0], [], 1]]
         # walk over each step in sequence
         cdef int step = 0
-        isTerminal = False
         while not self.test_env_list[0].isTerminal():
             all_candidates = []
             # expand each current candidate 
@@ -553,7 +546,10 @@ class FINDER:
                 cur_env, cur_act, cur_score = sequences[i]
                 possible_actions = [n for n in range(0,num_nodes) if n not in env_states[i]]
                 for action in possible_actions:
-                    candidate = [cur_env, cur_act + [action], cur_score * probabilities_list[i][action]]
+                    if only_use_cur_qvalue:
+                        candidate = [cur_env, cur_act + [action], probabilities_list[i][action]]
+                    else:
+                        candidate = [cur_env, cur_act + [action], cur_score * probabilities_list[i][action]]
                     all_candidates.append(candidate)
             # order all candidates by score
             ordered = sorted(all_candidates, key=lambda tup:tup[2], reverse=True)
@@ -680,7 +676,7 @@ class FINDER:
             full_pred.extend(pred)
         return full_pred
 
-    def prepare_external_inputs(self, prepareBatchGraph):
+    def prepare_inputs(self, prepareBatchGraph):
 
         self.inputs['action_select'] = prepareBatchGraph.act_select
         self.inputs['rep_global'] = prepareBatchGraph.rep_global
@@ -695,9 +691,12 @@ class FINDER:
 
         self.inputs['start_param'] = prepareBatchGraph.start_param
         self.inputs['end_param'] = prepareBatchGraph.end_param
+        self.inputs['agg_state_param'] = prepareBatchGraph.agg_state_param
         self.inputs['state_sum_param'] = prepareBatchGraph.state_sum_param
         self.inputs['state_param'] = prepareBatchGraph.state_param
         self.inputs['mask_param'] = prepareBatchGraph.mask_param
+        self.inputs['pad_node_param'] = prepareBatchGraph.pad_node_param
+        self.inputs['pad_reverse_param'] = prepareBatchGraph.pad_reverse_param
         
         self.inputs['laplacian_param'] = prepareBatchGraph.laplacian_param
         self.inputs['subgsum_param'] = prepareBatchGraph.subgsum_param
@@ -713,6 +712,7 @@ class FINDER:
         cdef int ignore_covered_edges = self.cfg['ignore_covered_edges']
         cdef int selected_nodes_inclusion = self.cfg['selected_nodes_inclusion']
         cdef int embeddingMethod = self.cfg['embeddingMethod']
+        cdef int NUM_MAX = self.cfg['NUM_MAX']
         # clear inputs
         self.inputs = dict()
         # print("Running SetupTrain")
@@ -721,10 +721,11 @@ class FINDER:
         # print("Targets:", self.inputs['target'])
         # print("preparing batch graph in SetupTrain...")
         prepareBatchGraph = PrepareBatchGraph.py_PrepareBatchGraph(aggregatorID, node_init_dim, edge_init_dim, 
-                                                                   ignore_covered_edges, selected_nodes_inclusion, embeddingMethod)
+                                                                   ignore_covered_edges, selected_nodes_inclusion, 
+                                                                   embeddingMethod, NUM_MAX)
         # print("setting up train in SetupTrain...")
         prepareBatchGraph.SetupTrain(idxes, g_list, covered, actions)
-        self.prepare_external_inputs(prepareBatchGraph)
+        self.prepare_inputs(prepareBatchGraph)
         # print("Edge sum train:", self.inputs['edge_sum'])
         # print("Node input Train:", np.array(self.inputs['node_input']).shape)
 
@@ -736,42 +737,43 @@ class FINDER:
         cdef int ignore_covered_edges = self.cfg['ignore_covered_edges']
         cdef int selected_nodes_inclusion = self.cfg['selected_nodes_inclusion']
         cdef int embeddingMethod = self.cfg['embeddingMethod']
+        cdef int NUM_MAX = self.cfg['NUM_MAX']
         # clear inputs
         # print("Running SetupPredAll")
         prepareBatchGraph = PrepareBatchGraph.py_PrepareBatchGraph(aggregatorID, node_init_dim, edge_init_dim, 
-                                                                   ignore_covered_edges, selected_nodes_inclusion, embeddingMethod)
+                                                                   ignore_covered_edges, selected_nodes_inclusion, 
+                                                                   embeddingMethod, NUM_MAX)
         # print("Initialized PrepareBatchGraph")
         prepareBatchGraph.SetupPredAll(idxes, g_list, covered)
         # print("Ran SetupPredAll")
         
         self.inputs = dict()
         self.inputs['is_training'] = False
-        self.prepare_external_inputs(prepareBatchGraph)
+        self.prepare_inputs(prepareBatchGraph)
         # print("Edge sum pred:", self.inputs['edge_sum'])
         # print("Ran SetupPredAll")
         return prepareBatchGraph.idx_map_list
 
-    def Setup_decoder_inputs(self, idxes, g_list, covered):
+    def Setup_NodeLevelInputs(self, idxes, g_list, covered):
         cdef int aggregatorID = self.cfg['aggregatorID']
         cdef int node_init_dim = self.cfg['node_init_dim']
         cdef int edge_init_dim = self.cfg['edge_init_dim']
         cdef int ignore_covered_edges = self.cfg['ignore_covered_edges']
         cdef int selected_nodes_inclusion = self.cfg['selected_nodes_inclusion']
         cdef int embeddingMethod = self.cfg['embeddingMethod']
+        cdef int NUM_MAX = self.cfg['NUM_MAX']
         # clear inputs
         # print("Running SetupPredAll")
         prepareBatchGraph = PrepareBatchGraph.py_PrepareBatchGraph(aggregatorID, node_init_dim, edge_init_dim, 
-                                                                   ignore_covered_edges, selected_nodes_inclusion, embeddingMethod)
+                                                                   ignore_covered_edges, selected_nodes_inclusion, 
+                                                                   embeddingMethod, NUM_MAX)
                                         
         self.inputs = dict()
         self.inputs['is_training'] = False
-        self.prepare_external_inputs(prepareBatchGraph)
+        self.prepare_inputs(prepareBatchGraph)
         return prepareBatchGraph.idx_map_list
 
-    def get_init_embedding(self):
-        pass
-
-    def set_up_placeholder_dict(self):
+    def setup_placeholder_dict(self):
         self.placeholder_dict = dict()
         # encoder inputs
         # [node_cnt, node_init_dim]
@@ -796,11 +798,17 @@ class FINDER:
         # [batch_size, node_cnt]
         self.placeholder_dict['end_param'] = tf.sparse_placeholder(tf.float32, name="end_param")
         # [batch_size, node_cnt]
+        self.placeholder_dict['agg_state_param'] = tf.sparse_placeholder(tf.float32, name="agg_state_param")
+        # [batch_size, node_cnt]
         self.placeholder_dict['state_sum_param'] = tf.sparse_placeholder(tf.float32, name="state_sum_param")
         # [max_nodes*batch_size, node_cnt]
         self.placeholder_dict['state_param'] = tf.sparse_placeholder(tf.float32, name="state_param")
         # [node_cnt, node_cnt]
         self.placeholder_dict['mask_param'] = tf.sparse_placeholder(tf.float32, name="mask_param")
+        # [num_nodes*batch_size, node_cnt]
+        self.placeholder_dict['pad_node_param'] = tf.sparse_placeholder(tf.float32, name="pad_node_param")
+        # [node_cnt, num_nodes*batch_size]
+        self.placeholder_dict['pad_reverse_param'] = tf.sparse_placeholder(tf.float32, name="pad_reverse_param")
         # [node_cnt, node_cnt]
         self.placeholder_dict['laplacian_param'] = tf.sparse_placeholder(tf.float32, name="laplacian_param")
         # [batch_size, node_cnt], sum over all noce embeddings for virtual node state representation
