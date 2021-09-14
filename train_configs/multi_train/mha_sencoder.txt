@@ -37,7 +37,7 @@ NUM_MIN = 20 # min dim of training/validation graphs, default value 15
 NUM_MAX = 20 # max dim of training/validation graphs, default value 20
 NN_ratio = 1.0 # percentage of neareast neighbors for graph sparsification
 n_generator = 1000 # number of graphs for each training graph generation cycle, default value 1000
-train_path = 'data/train_sets/synthetic_n_20_50000'
+train_path = 'data/train_sets/synthetic_n_20_200000'
 train_scale_fac = 0.000001
 
 # Decoder hyperparameters

@@ -8,8 +8,8 @@ fix_start_node = False
 net_type = 'AGNN' # specifies which net to use, S2VDQN needs embeddingmethod 3
 max_bp_iter = 3 # number of aggregation steps in GNN, equals number of layers, default value 3
 aggregatorID = 1 # 0:sum; 1:mean; 2:GCN; 3:edge weight based sum, default value 0
-node_init_dim = 6 # number of initial node features, default value 6
-edge_init_dim = 4 # number of initial edge features, default value 4
+node_init_dim = 2 # number of initial node features, default value 6
+edge_init_dim = 2 # number of initial edge features, default value 4
 state_init_dim = 1 # number of initial state features, default value 1
 node_embed_dim = 64 # dimension p for each vector embedding of the nodes in the graph, default value 64
 edge_embed_dim = 64 # dimension q for each vector embedding of the edges in the graph, default value 64
@@ -37,7 +37,7 @@ NUM_MIN = 20 # min dim of training/validation graphs, default value 15
 NUM_MAX = 20 # max dim of training/validation graphs, default value 20
 NN_ratio = 1.0 # percentage of neareast neighbors for graph sparsification
 n_generator = 1000 # number of graphs for each training graph generation cycle, default value 1000
-train_path = 'data/train_sets/synthetic_n_20_50000'
+train_path = 'data/train_sets/synthetic_n_20_200000'
 train_scale_fac = 0.000001
 
 # Decoder hyperparameters
