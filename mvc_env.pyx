@@ -10,38 +10,57 @@ cdef class py_MvcEnv:
     cdef shared_ptr[MvcEnv] inner_MvcEnv
     cdef shared_ptr[Graph] inner_Graph
     
-    def __cinit__(self, double _norm, int _help_func, int _sign, int _fix_start_node):
-        self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(_norm, _help_func, _sign, _fix_start_node))
-        self.inner_Graph = shared_ptr[Graph](new Graph())
-    
-    # def __cinit__(self, *args):
-    #     cdef int _norm
-    #     cdef int _help_func
-    #     cdef int _sign
-
+    # def __cinit__(self, double _norm, int _help_func, int _sign, int _fix_start_node):
+    #     self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(_norm, _help_func, _sign, _fix_start_node))
     #     self.inner_Graph = shared_ptr[Graph](new Graph())
-    #     if len(args) == 0:
-    #         mvc_env_ = shared_ptr[MvcEnv](new MvcEnv())
-    #         deref(mvc_env_).norm = args[0].norm
-    #         deref(mvc_env_).graph = args[0].graph
-    #         deref(mvc_env_).sign = args[0].sign
-    #         deref(mvc_env_).help_func = args[0].help_func
-    #         deref(mvc_env_).numCoveredEdges = args[0].numCoveredEdges
-    #         deref(mvc_env_).state_seq = args[0].state_seq
-    #         deref(mvc_env_).act_seq = args[0].act_seq
-    #         deref(mvc_env_).state = args[0].state
-    #         deref(mvc_env_).reward_seq = args[0].reward_seq
-    #         deref(mvc_env_).sum_rewards = args[0].sum_rewards
-    #         deref(mvc_env_).covered_set = args[0].covered_set
-    #         deref(mvc_env_).avail_list = args[0].avail_list
-    #         self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(mvc_env_))
-    #     else:
-    #         _norm = args[0]
-    #         _help_func = args[1]
-    #         _sign =  args[2]
-    #         self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(_norm, _help_func, _sign))
+    
+    def __cinit__(self, *args):
+        cdef int _norm
+        cdef int _help_func
+        cdef int _sign
+        cdef int _fix_start_node
+
+        self.inner_Graph = shared_ptr[Graph](new Graph())
+        if len(args) == 1:
+            _norm = args[0].norm
+            _help_func = args[0].help_func
+            _sign =  args[0].sign
+            _fix_start_node = args[0].fix_start_node
+            self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(_norm, _help_func, _sign, _fix_start_node))
+            
+            self.insert_graph(args[0].graph)
+            deref(self.inner_MvcEnv).graph = self.inner_Graph
+            
+            deref(self.inner_MvcEnv).numCoveredEdges = args[0].numCoveredEdges
+            deref(self.inner_MvcEnv).state_seq = args[0].state_seq
+            deref(self.inner_MvcEnv).act_seq = args[0].act_seq
+            deref(self.inner_MvcEnv).state = args[0].state
+            deref(self.inner_MvcEnv).reward_seq = args[0].reward_seq
+            deref(self.inner_MvcEnv).sum_rewards = args[0].sum_rewards
+            deref(self.inner_MvcEnv).covered_set = args[0].covered_set
+            deref(self.inner_MvcEnv).avail_list = args[0].avail_list
+            # print("orig act seq:", args[0].act_seq)
+            # print("copied act seq:", deref(self.inner_MvcEnv).act_seq)
+        else:
+            _norm = args[0]
+            _help_func = args[1]
+            _sign =  args[2]
+            _fix_start_node = args[3]
+            self.inner_MvcEnv = shared_ptr[MvcEnv](new MvcEnv(_norm, _help_func, _sign, _fix_start_node))
     
     def s0(self, _g):
+        self.inner_Graph = shared_ptr[Graph](new Graph())
+        deref(self.inner_Graph).num_nodes = _g.num_nodes
+        deref(self.inner_Graph).num_edges = _g.num_edges
+        deref(self.inner_Graph).NN_ratio = _g.NN_ratio
+        deref(self.inner_Graph).edge_list = _g.edge_list
+        deref(self.inner_Graph).adj_list = _g.adj_list
+        deref(self.inner_Graph).node_feats = _g.node_feats
+        deref(self.inner_Graph).EdgeWeight = _g.EdgeWeight
+        deref(self.inner_Graph).edge_probs = _g.edge_probs
+        deref(self.inner_MvcEnv).s0(self.inner_Graph)
+
+    def insert_graph(self, _g):
         self.inner_Graph = shared_ptr[Graph](new Graph())
         deref(self.inner_Graph).num_nodes = _g.num_nodes
         deref(self.inner_Graph).num_edges = _g.num_edges
@@ -169,11 +188,14 @@ def copy_test_environment(test_env):
     cdef int help_func = test_env.help_func
     cdef int reward_sign = test_env.sign
     cdef int fix_start_node = test_env.fix_start_node
-    copied_test_env = py_MvcEnv(NUM_MAX, help_func, reward_sign, fix_start_node)
-    copied_test_env.s0(test_env.graph)
     
-    for action in test_env.act_seq:
-        copied_test_env.stepWithoutReward(action)
+    copied_test_env = py_MvcEnv(test_env)
+    # copied_test_env = py_MvcEnv(NUM_MAX, help_func, reward_sign, fix_start_node)
+    # copied_test_env.s0(test_env.graph)
+    # for action in test_env.act_seq:
+    #     copied_test_env.stepWithoutReward(action)
+    
     assert(test_env.act_seq == copied_test_env.act_seq)
+    # assert(test_env.graph == copied_test_env.graph)
     assert(test_env.state == copied_test_env.state)
     return copied_test_env
