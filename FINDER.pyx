@@ -399,7 +399,7 @@ class FINDER:
         LossFile = f'{save_dir}/Loss_{NUM_MIN}_{NUM_MAX}.csv'
         valid_approx_out = open(valid_file, 'w')
         loss_out = open(LossFile, 'w')
-        for iter in range(MAX_ITERATION):
+        for iter in tqdm(range(MAX_ITERATION)):
             start = time.clock()
             ###########-----------------------normal training data setup(start) -----------------##############################
             if iter and iter % 5000 == 0:
