@@ -22,5 +22,8 @@ fnames.sort(key=natural_keys)
 for fname in fnames:
     train_config_file_path = f'{multi_train_configs_path}/{fname}'
     api = FINDER_API(train_config_file_path)
-    api.train()
-    api.save_train_results(model_name=fname.split('.')[0])
+    try:
+        api.train()
+        api.save_train_results(model_name=fname.split('.')[0])
+    except:
+        print("Error")
