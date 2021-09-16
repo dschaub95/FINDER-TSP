@@ -205,7 +205,7 @@ class FINDER_API:
         lengths, solutions, sol_times = self.DQN.Evaluate(test_dir=test_dir, scale_factor=scale_factor)
         return lengths, solutions, sol_times
     
-    def save_train_results(self, model_name='', save_architecture=True, only_save_best_model=False):
+    def save_train_results(self, model_name='', save_architecture=True, only_save_best_model=False, num_best=1):
         g_type = self.cfg['g_type']
         NUM_MIN = self.cfg['NUM_MIN']
         NUM_MAX = self.cfg['NUM_MAX']
@@ -237,12 +237,12 @@ class FINDER_API:
         for iter in iterations:
             self.save_checkpoint_files(ckpt_save_dir, iter)
         
-        print("Saving best checkpoint file seperately...")
+        print("Saving best checkpoint files seperately...")
         best_ckpt_save_dir = f'{save_dir}/best_checkpoint'
         self.create_dir(best_ckpt_save_dir)
-        min_idx = np.argmin(valid_ratios)
-        min_iter = iterations[min_idx]
-        self.save_checkpoint_files(best_ckpt_save_dir, min_iter)
+        ordered_ckpts = sorted(zip(iterations, valid_ratios), key=lambda tup:tup[1], reverse=False)
+        for k in range(num_best):
+            self.save_checkpoint_files(best_ckpt_save_dir, ordered_ckpts[k][0], rank=k+1)
         
         print("Saving config file...")
         config_file = 'current_config.txt'
@@ -257,15 +257,16 @@ class FINDER_API:
                 copy(f'{base_path}/architecture/{a_file}', f'{architecture_save_dir}/{a_file}')
     
 
-    def save_checkpoint_files(self, ckpt_save_dir, iter):
+    def save_checkpoint_files(self, ckpt_save_dir, iter, rank=''):
         g_type = self.cfg['g_type']
         NUM_MIN = self.cfg['NUM_MIN']
         NUM_MAX = self.cfg['NUM_MAX']
         checkpoint_suffixes = ['data-00000-of-00001', 'index', 'meta']
         for suffix in checkpoint_suffixes:
-            ckpt_name = f'nrange_{NUM_MIN}_{NUM_MAX}_iter_{iter}.ckpt.{suffix}'
-            ckpt_path = f'./models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}/checkpoints/{ckpt_name}'
-            copy(ckpt_path, f'{ckpt_save_dir}/{ckpt_name}')
+            old_ckpt_name = f'nrange_{NUM_MIN}_{NUM_MAX}_iter_{iter}.ckpt.{suffix}'
+            new_ckpt_name = f'nrange_{NUM_MIN}_{NUM_MAX}_iter_{iter}_rank_{rank}.ckpt.{suffix}'
+            ckpt_path = f'./models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}/checkpoints/{old_ckpt_name}'
+            copy(ckpt_path, f'{ckpt_save_dir}/{new_ckpt_name}')
     
     def create_dir(self, save_dir):
         if not os.path.exists(save_dir):
