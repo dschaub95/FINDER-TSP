@@ -683,13 +683,9 @@ std::vector<std::shared_ptr<sparseMatrix>> PrepareBatchGraph::n2n_construct(Grap
                     result->value.push_back(1.0/norm);
                     break;
 		        }
-                case 3:
-		        {
-                    result->value.push_back(sqrt(1/graph->edge_weights->head[i][j]));
-                    break;
-		        }
 		        default:
-		            break;
+		            result->value.push_back(1.0);
+                    break;
 		    }
             // add edge weight to the sum for that specific node
             edge_weight_sum += graph->edge_weights->head[i][j];
