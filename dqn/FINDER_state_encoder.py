@@ -31,9 +31,14 @@ class MHAStateEncoder(tf.keras.layers.Layer):
         # access relevant placeholders
         self.start_param = tf.cast(placeholder_dict['start_param'], tf.float32)
         self.end_param = tf.cast(placeholder_dict['end_param'], tf.float32)
+        
         self.agg_state_param = tf.cast(placeholder_dict['agg_state_param'], tf.float32)
         # self.subgsum_param = tf.cast(placeholder_dict['subgsum_param'], tf.float32)
+        
         self.pad_node_param = tf.cast(placeholder_dict['pad_node_param'], tf.float32)
+        
+        # define learned start and last node embedding
+        
         # define layers
         self.dropout = tf.keras.layers.Dropout(rate)
         self.mha = MultiHeadAttention(d_model, num_heads=num_heads, out_put_dim=state_embed_dim)
@@ -46,7 +51,7 @@ class MHAStateEncoder(tf.keras.layers.Layer):
         end_node_embed = tf.sparse.sparse_dense_matmul(self.end_param, node_embed) 
         # replace with learned weights in case of t=0
 
-        # aggregated_state_embed = tf.sparse.sparse_dense_matmul(self.subgsum_param, node_embed)
+        # aggregated_node_embed = tf.sparse.sparse_dense_matmul(self.subgsum_param, node_embed)
         aggregated_node_embed = tf.sparse.sparse_dense_matmul(self.agg_state_param, node_embed)
         aggregated_node_embed = tf.reshape(aggregated_node_embed, [-1, self.node_embed_dim])
         
