@@ -122,7 +122,7 @@ class FINDER:
             with tf.compat.v1.variable_scope('train_DQN'):
                 self.loss, self.trainStep, self.q_pred, self.q_on_all, self.Q_param_list = self.BuildAGNN() #[loss,trainStep,q_pred, q_on_all, ...]
             self.Q_param_list = tf.compat.v1.trainable_variables(scope='train_DQN')
-            # print("DQN params", [tensor.name for tensor in self.Q_param_list])
+            print("DQN params", [tensor.name for tensor in self.Q_param_list])
             # print(len(self.Q_param_list))
             # print("Train Decoder params",[tensor.name for tensor in tf.compat.v1.trainable_variables(scope='train_DQN/decoder')])
             #init Target Q Network
@@ -150,6 +150,7 @@ class FINDER:
             self.updateTestDQN = tf.group(*[a.assign(b) for a,b in zip(self.test_DQN_params, self.Q_param_list)])
 
             self.target_DQN_params = tf.compat.v1.trainable_variables(scope='target_DQN')
+            print("Target DQN params", [tensor.name for tensor in self.target_DQN_params])
             self.UpdateTargetDQN = tf.group(*[a.assign(b) for a,b in zip(self.target_DQN_params, self.Q_param_list)])
         else:
            # overwrite config
