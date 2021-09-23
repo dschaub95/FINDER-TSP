@@ -6,7 +6,7 @@ from shutil import copy
 from distutils.util import strtobool
 from tqdm import tqdm
 from datetime import datetime
-
+from distutils.dir_util import copy_tree
 from FINDER import FINDER
 # fix seeds for graph generation and weight init
 # tf.set_random_seed(73)
@@ -196,6 +196,8 @@ class FINDER_API:
                 copy(f'{a_path}/{a_file}', f'{architecture_save_dir}/{a_file}')
             except:
                 print(f"Error when saving current architecture file {a_file}!")
+        # copy dqn files
+        copy_tree('dqn', f'{architecture_save_dir}/dqn')
 
     def load_model(self, ckpt_path):
         self.DQN.LoadModel(ckpt_path)
@@ -205,7 +207,7 @@ class FINDER_API:
         lengths, solutions, sol_times = self.DQN.Evaluate(test_dir=test_dir, scale_factor=scale_factor)
         return lengths, solutions, sol_times
     
-    def save_train_results(self, model_name='', save_architecture=True, only_save_best_model=False, num_best=1):
+    def save_train_results(self, model_name='', save_architecture=True, save_all_ckpts=True, num_best=1):
         g_type = self.cfg['g_type']
         NUM_MIN = self.cfg['NUM_MIN']
         NUM_MAX = self.cfg['NUM_MAX']
@@ -231,17 +233,18 @@ class FINDER_API:
         loss_file = f'Loss_{NUM_MIN}_{NUM_MAX}.csv'
         copy(f'{base_path}/{loss_file}', f'{save_dir}/{loss_file}')
         
-        print("Saving all checkpoint files...")
-        ckpt_save_dir = f'{save_dir}/checkpoints'
-        self.create_dir(ckpt_save_dir)
-        for iter in iterations:
-            self.save_checkpoint_files(ckpt_save_dir, iter)
-        
+        if save_all_ckpts:
+            print("Saving all checkpoint files...")
+            ckpt_save_dir = f'{save_dir}/checkpoints'
+            self.create_dir(ckpt_save_dir)
+            for iter in iterations:
+                self.save_checkpoint_files(ckpt_save_dir, iter)
+            
         print("Saving best checkpoint files seperately...")
         best_ckpt_save_dir = f'{save_dir}/best_checkpoint'
         self.create_dir(best_ckpt_save_dir)
         ordered_ckpts = sorted(zip(iterations, valid_ratios), key=lambda tup:tup[1], reverse=False)
-        for k in range(num_best):
+        for k in range(min(num_best,len(ordered_ckpts))):
             self.save_checkpoint_files(best_ckpt_save_dir, ordered_ckpts[k][0], rank=k+1)
         
         print("Saving config file...")
@@ -255,7 +258,12 @@ class FINDER_API:
             architecture_files = ['FINDER.pyx', 'PrepareBatchGraph.pyx', 'PrepareBatchGraph.pxd', 'PrepareBatchGraph.cpp', 'PrepareBatchGraph.h']
             for a_file in architecture_files:
                 copy(f'{base_path}/architecture/{a_file}', f'{architecture_save_dir}/{a_file}')
-    
+            # copy dqn files
+            try:
+                copy_tree(f'{base_path}/architecture/dqn', f'{architecture_save_dir}/dqn')
+            except:
+                print("Couldn't save dqn files!")
+
 
     def save_checkpoint_files(self, ckpt_save_dir, iter, rank=''):
         g_type = self.cfg['g_type']
