@@ -16,9 +16,9 @@ from py_utils.FINDER_train_utils import *
 cur_config_path = './models/tsp_2d/nrange_20_20'
 cur_config_file_path = f'{cur_config_path}/current_config.txt'
 api = FINDER_API(cur_config_file_path)
-if len(sys.argv) == 1:
+if len(sys.argv) == 2:
     api.save_train_results(model_name=sys.argv[1], num_best=10, save_all_ckpts=False)
-elif len(sys.argv) > 1:
+elif len(sys.argv) > 2:
     api.save_train_results(model_name=sys.argv[1], num_best=10, save_all_ckpts=True)
 else:
     api.save_train_results(model_name='model', num_best=10, save_all_ckpts=False)
