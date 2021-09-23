@@ -26,8 +26,7 @@ api.load_model(ckpt_path=best_ckpt_file_path)
 
 data_dir_valid = 'data/valid_sets/synthetic_nrange_20_20_100'
 data_dir_0 = 'data/test_sets/synthetic_n_20_1000'
-data_dir_1 = 'data/test_sets/synthetic_n_50_1000'
-test_dirs = [data_dir_0, data_dir_1]
+test_dirs = [data_dir_0]
 
 # use beam search during testing
 search_strategy = 'beam_search+'
@@ -43,3 +42,15 @@ suffix = f'{search_strategy}_{beam_width}'
 lengths, solutions, sol_times = api.run_test(data_dir_valid, scale_factor=0.000001)
 approx_ratios, mean_approx_ratio = get_approx_ratios(data_dir_valid, lengths)
 print(mean_approx_ratio)
+
+mean_approx_ratios = []
+for data_dir in test_dirs[0:1]:
+    # run test
+    lengths, solutions, sol_times = api.run_test(data_dir, scale_factor=0.000001)
+    approx_ratios, mean_approx_ratio = get_approx_ratios(data_dir, lengths)
+    mean_approx_ratios.append(mean_approx_ratio)
+    print(mean_approx_ratio)
+    # save test results
+    save_approx_ratios(data_dir, approx_ratios, model_name, suffix=suffix)
+    save_solutions(data_dir, solutions, model_name, suffix=suffix)
+    save_lengths(data_dir, lengths, model_name, suffix=suffix)
