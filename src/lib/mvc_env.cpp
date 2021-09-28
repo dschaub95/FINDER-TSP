@@ -24,12 +24,13 @@ MvcEnv::MvcEnv()
     avail_list.clear();
 }
 
-MvcEnv::MvcEnv(double _norm, int _help_func, int _sign)
+MvcEnv::MvcEnv(double _norm, int _help_func, int _sign, int _fix_start_node)
 {
     norm = _norm;
     graph = nullptr;
     sign = _sign;
     help_func = _help_func;
+    fix_start_node = _fix_start_node;
     numCoveredEdges = 0;
     state_seq.clear();
     act_seq.clear();
@@ -69,8 +70,16 @@ void MvcEnv::s0(std::shared_ptr<Graph> _g)
     if ((int)norm == -1) { norm = _g->num_nodes; }
     covered_set.clear();
     state.clear();
-    state.push_back(0);
-    covered_set.insert(0);
+    // if (help_func == 1)
+    // {
+    //     state.push_back(0);
+    //     covered_set.insert(0);
+    // }
+    if (fix_start_node == 1)
+    {
+        state.push_back(0);
+        covered_set.insert(0);
+    }
     numCoveredEdges = 0;
     state_seq.clear();
     act_seq.clear();
@@ -200,7 +209,11 @@ double MvcEnv::add_node(int new_node)
 double MvcEnv::getTourDifference(int new_node)
 {
     assert(graph);
-    
+    // zero return after first node selection
+    if (state.size() == 0)
+    {
+        return 0.0;
+    }
     int adj = state[0];
     int last_node = state[state.size()-1];
     double cost = graph->EdgeWeight[last_node][new_node]

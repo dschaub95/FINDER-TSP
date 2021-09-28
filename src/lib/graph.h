@@ -11,7 +11,7 @@ class Graph
 public:
     Graph();
     Graph(const int _num_nodes, const int _num_edges, const int* edges_from, const int* edges_to, 
-          double** _EdgeWeight, double** _node_feats, const double _NN_ratio);
+          double** _EdgeWeight, double** _edge_probs, double** _node_feats, const double _NN_ratio);
     ~Graph();
     int num_nodes;
     int num_edges;
@@ -19,6 +19,7 @@ public:
     std::vector< std::vector< int > > adj_list;
     std::vector< std::pair< int, int > > edge_list;
     std::vector< std::vector< double > > EdgeWeight;
+    std::vector< std::vector< double > > edge_probs;
     std::vector< std::vector< double > > node_feats;
 };
 

@@ -1,0 +1,6 @@
+logs
+logs/**
+results
+results/**
+
+data/*.txt

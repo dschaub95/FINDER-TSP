@@ -75,7 +75,8 @@ def prepare_testset_S2VDQN(folder, scale_factor=0.000001):
     # print("Number of loaded test graphs:",len(graph_list))
     return graph_list, fnames
 
-def get_approx_ratios(data_dir, fnames, test_lengths):
+def get_approx_ratios(data_dir, test_lengths):
+    fnames = get_fnames(data_dir)
     true_lengths = []
     len_dict = get_len_dict(data_dir)
     for fname in fnames:
@@ -84,16 +85,28 @@ def get_approx_ratios(data_dir, fnames, test_lengths):
     mean_approx_ratio = np.mean([length[0]/length[1] for length in zip(test_lengths, true_lengths)])
     return approx_ratios, mean_approx_ratio
 
+def get_fnames(dir, search_phrase='tsp'):
+    atoi = lambda text : int(text) if text.isdigit() else text
+    natural_keys = lambda text : [atoi(c) for c in re.split('(\d+)', text)]
+    try:
+        fnames = [f for f in os.listdir(dir) if os.path.isfile(f'{dir}/{f}')]
+        fnames.sort(key=natural_keys)
+    except:
+        print('\nBad directory!')
+    fnames = [fname for fname in fnames if search_phrase in fname]
+    return fnames
+
 def get_len_dict(folder):
     # get lengths
-    with open(folder+'lengths.txt', 'r') as f:
+    with open(f'{folder}/lengths.txt', 'r') as f:
         lines = f.readlines()
         file_names = [line.split(':')[0].strip() for k, line in enumerate(lines)]
         test_lens = [float(line.split(':')[-1].strip()) for k, line in enumerate(lines)]
         len_dict = dict(zip(file_names, test_lens))
     return len_dict
 
-def save_solutions(data_dir, fnames, solutions, model_name, suffix=''):
+def save_solutions(data_dir, solutions, model_name, suffix=''):
+    fnames = get_fnames(data_dir)
     sol_df = pd.DataFrame()
     idx = 0
     tqdm.write("Saving solutions...")
@@ -104,16 +117,18 @@ def save_solutions(data_dir, fnames, solutions, model_name, suffix=''):
         tmp_df[fname] = solutions[idx]
         sol_df = pd.concat([sol_df,tmp_df.astype(int)], ignore_index=False, axis=1)
         idx += 1
-    result_folder = data_dir.split("/")[-2]
-    result_path = f'results/{model_name}/{result_folder}'
-    model_name_short = '_'.join(model_name.split('_')[0:-2])
+    test_set_folder = data_dir.split("/")[-2]
+    test_set_name = data_dir.split("/")[-1]
+    result_path = f'results/{model_name}/{test_set_folder}/{test_set_name}'
+    model_name_short = '_'.join(model_name.split('_')[0:-4])
     create_dir(result_path)
     if suffix:
         sol_df.to_csv(f'{result_path}/solutions_{model_name_short}_{suffix}.csv')
     else:
         sol_df.to_csv(f'{result_path}/solutions_{model_name_short}.csv')
 
-def save_lengths(data_dir, fnames, lengths, model_name, suffix=''):
+def save_lengths(data_dir, lengths, model_name, suffix=''):
+    fnames = get_fnames(data_dir)
     lens_df = pd.DataFrame()
     idx = 0
     tqdm.write("Saving solution lengths...")
@@ -124,16 +139,18 @@ def save_lengths(data_dir, fnames, lengths, model_name, suffix=''):
         tmp_df[fname] = [lengths[idx]]
         lens_df = pd.concat([lens_df,tmp_df], ignore_index=False, axis=1)
         idx += 1
-    result_folder = data_dir.split("/")[-2]
-    result_path = f'results/{model_name}/{result_folder}'
-    model_name_short = '_'.join(model_name.split('_')[0:-2])
+    test_set_folder = data_dir.split("/")[-2]
+    test_set_name = data_dir.split("/")[-1]
+    result_path = f'results/{model_name}/{test_set_folder}/{test_set_name}'
+    model_name_short = '_'.join(model_name.split('_')[0:-4])
     create_dir(result_path)
     if suffix:
         lens_df.to_csv(f'{result_path}/tour_lengths_{model_name_short}_{suffix}.csv')
     else:
         lens_df.to_csv(f'{result_path}/tour_lengths_{model_name_short}.csv')
 
-def save_approx_ratios(data_dir, fnames, approx_ratios, model_name, suffix=''):
+def save_approx_ratios(data_dir, approx_ratios, model_name, suffix=''):
+    fnames = get_fnames(data_dir)
     approx_df = pd.DataFrame()
     idx = 0
     tqdm.write("Saving approximation ratios...")
@@ -144,9 +161,10 @@ def save_approx_ratios(data_dir, fnames, approx_ratios, model_name, suffix=''):
         tmp_df[fname] = [approx_ratios[idx]]
         approx_df = pd.concat([approx_df,tmp_df], ignore_index=False, axis=1)
         idx += 1
-    result_folder = data_dir.split("/")[-2]
-    result_path = f'results/{model_name}/{result_folder}'
-    model_name_short = '_'.join(model_name.split('_')[0:-2])
+    test_set_folder = data_dir.split("/")[-2]
+    test_set_name = data_dir.split("/")[-1]
+    result_path = f'results/{model_name}/{test_set_folder}/{test_set_name}'
+    model_name_short = '_'.join(model_name.split('_')[0:-4])
     create_dir(result_path)
     if suffix:
         approx_df.to_csv(f'{result_path}/approx_ratios_{model_name_short}_{suffix}.csv')
@@ -173,6 +191,7 @@ def get_test_approx_ratios_for_model(test_set_names, model_name, search_strategy
     return mean_approx_ratios, std_approx_ratios
 
 def get_data_from_result_files(result_dir, search_strategy='greedy'):
+    print(result_dir)
     for f in os.listdir(result_dir):
         if not search_strategy in f:
             continue
@@ -194,11 +213,16 @@ def get_data_from_result_files(result_dir, search_strategy='greedy'):
         solutions.append(processed_list)
     return fnames, approx_ratios, test_lengths, solutions
 
-def get_best_ckpt(model_path):
+def get_best_ckpt(model_path, rank=1):
     best_ckpt_path = f'{model_path}/best_checkpoint'
-    for fname in os.listdir(best_ckpt_path):
-        if 'ckpt' in fname:
-            best_ckpt_file = '.'.join(fname.split('.')[0:-1])
+    fnames = get_fnames(best_ckpt_path, search_phrase='ckpt')
+    for fname in fnames:
+        if 'rank' in fname:
+            if f'rank_{rank}.' in fname:
+                best_ckpt_file = '.'.join(fname.split('.')[0:-1])
+                break
+        else:
+            best_ckpt_file = '.'.join(fnames[0].split('.')[0:-1])
             break
     best_ckpt_file_path = f'{best_ckpt_path}/{best_ckpt_file}'
     return best_ckpt_file_path

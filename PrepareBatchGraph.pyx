@@ -38,9 +38,11 @@ cdef class py_sparseMatrix:
 cdef class py_PrepareBatchGraph:
     cdef shared_ptr[PrepareBatchGraph] inner_PrepareBatchGraph
     cdef sparseMatrix matrix
-    def __cinit__(self, aggregatorID, node_init_dim, edge_init_dim, ignore_covered_edges, include_selected_nodes, embeddingMethod):
-        self.inner_PrepareBatchGraph = shared_ptr[PrepareBatchGraph](new PrepareBatchGraph(aggregatorID, node_init_dim, edge_init_dim, ignore_covered_edges, 
-                                                                                           include_selected_nodes, embeddingMethod))
+    def __cinit__(self, aggregatorID, node_init_dim, edge_init_dim, ignore_covered_edges, include_selected_nodes, embeddingMethod, max_nodes):
+        self.inner_PrepareBatchGraph = shared_ptr[PrepareBatchGraph](new PrepareBatchGraph(aggregatorID, node_init_dim, 
+                                                                                           edge_init_dim, ignore_covered_edges, 
+                                                                                           include_selected_nodes, embeddingMethod,
+                                                                                           max_nodes))
 
     def SetupTrain(self, idxes, g_list, covered, list actions):
         cdef shared_ptr[Graph] inner_Graph
@@ -55,6 +57,7 @@ cdef class py_PrepareBatchGraph:
             deref(inner_Graph).adj_list = _g.adj_list
             deref(inner_Graph).node_feats = _g.node_feats
             deref(inner_Graph).EdgeWeight = _g.EdgeWeight
+            deref(inner_Graph).edge_probs = _g.edge_probs
             inner_glist.push_back(inner_Graph)
 
         cdef int *refint = <int*>malloc(len(actions)*sizeof(int))
@@ -77,6 +80,7 @@ cdef class py_PrepareBatchGraph:
             deref(inner_Graph).adj_list = _g.adj_list
             deref(inner_Graph).node_feats = _g.node_feats
             deref(inner_Graph).EdgeWeight = _g.EdgeWeight
+            deref(inner_Graph).edge_probs = _g.edge_probs
             inner_glist.push_back(inner_Graph)
         deref(self.inner_PrepareBatchGraph).SetupPredAll(idxes,inner_glist,covered)
 
@@ -121,6 +125,10 @@ cdef class py_PrepareBatchGraph:
         matrix = deref(deref(self.inner_PrepareBatchGraph).end_param)
         return self.ConvertSparseToTensor(matrix)
     @property
+    def agg_state_param(self):
+        matrix = deref(deref(self.inner_PrepareBatchGraph).agg_state_param)
+        return self.ConvertSparseToTensor(matrix)
+    @property
     def state_sum_param(self):
         matrix = deref(deref(self.inner_PrepareBatchGraph).state_sum_param)
         return self.ConvertSparseToTensor(matrix)
@@ -131,6 +139,14 @@ cdef class py_PrepareBatchGraph:
     @property
     def mask_param(self):
         matrix = deref(deref(self.inner_PrepareBatchGraph).mask_param)
+        return self.ConvertSparseToTensor(matrix)
+    @property
+    def pad_node_param(self):
+        matrix = deref(deref(self.inner_PrepareBatchGraph).pad_node_param)
+        return self.ConvertSparseToTensor(matrix)
+    @property
+    def pad_reverse_param(self):
+        matrix = deref(deref(self.inner_PrepareBatchGraph).pad_reverse_param)
         return self.ConvertSparseToTensor(matrix)
     @property
     def idx_map_list(self):

@@ -1,0 +1,19 @@
+numpy=1.19
+tensorflow-gpu=1.15
+cython
+networkx
+pandas
+scipy
+tqdm
+scikit-learn
+scikit-learn-intelex
+jupyter
+notebook
+tensorboardX
+matplotlib
+seaborn
+
+# conda install --file requirements_conda.txt
+# conda install pytorch==1.0.1 torchvision==0.2.2 cudatoolkit=10.0 -c pytorch
+# conda create --name FINDER_env python=3.7
+# while read requirement; do conda install --yes $requirement; done < requirements_conda.txt

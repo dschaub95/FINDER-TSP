@@ -24,6 +24,7 @@ cdef class pyx_Utils:
         deref(self.inner_Graph).adj_list = _g.adj_list
         deref(self.inner_Graph).node_feats = _g.node_feats
         deref(self.inner_Graph).EdgeWeight = _g.EdgeWeight
+        deref(self.inner_Graph).edge_probs = _g.edge_probs
         return deref(self.inner_Utils).getTourLength(self.inner_Graph, solution)
 
 def gen_graph(num_min, num_max, g_type):

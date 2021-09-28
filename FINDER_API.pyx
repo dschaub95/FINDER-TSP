@@ -1,11 +1,12 @@
 import numpy as np
+np.random.seed(42)
 import os
 import time
 from shutil import copy
 from distutils.util import strtobool
 from tqdm import tqdm
 from datetime import datetime
-
+from distutils.dir_util import copy_tree
 from FINDER import FINDER
 # fix seeds for graph generation and weight init
 # tf.set_random_seed(73)
@@ -58,6 +59,7 @@ class FINDER_API:
         self.cfg['help_func'] = 0 # whether to use helper function during node insertion process, which inserts node into best position in current partial tour
         self.cfg['reward_normalization'] = 'max'
         self.cfg['reward_sign'] = -1
+        self.cfg['fix_start_node'] = 1
 
         # GNN hyperparameters
         self.cfg['net_type'] = 'AGNN'
@@ -69,6 +71,7 @@ class FINDER_API:
         # self.cfg['state_embed_dim'] = 64
         self.cfg['node_embed_dim'] = 64
         self.cfg['edge_embed_dim'] = 64
+        self.cfg['state_embed_dim'] = 64
         self.cfg['embeddingMethod'] = 2
         self.cfg['ignore_covered_edges'] = 0 
         self.cfg['selected_nodes_inclusion'] = 2
@@ -84,7 +87,7 @@ class FINDER_API:
         self.cfg['Alpha'] = 0.001
         self.cfg['save_interval'] = 300
         self.cfg['num_env'] = 1
-        self.cfg['dropout_rate'] = 0.2
+        self.cfg['dropout_rate'] = 0.1
 
         # training set specifications
         self.cfg['g_type'] = 'tsp_2d'
@@ -92,9 +95,11 @@ class FINDER_API:
         self.cfg['NUM_MAX'] = 20
         self.cfg['NN_ratio'] = 1.0
         self.cfg['n_generator'] = 1000
+        self.cfg['train_path'] = None
+        self.cfg['train_scale_fac'] = 0.000001
 
         # Decoder hyperparameters
-        self.cfg['decoder'] = 0
+        self.cfg['decoder_type'] = 0
         self.cfg['REG_HIDDEN'] = 32
         
         # search startegy
@@ -111,10 +116,11 @@ class FINDER_API:
         self.cfg['eps_step'] = 10000.0
         self.cfg['MEMORY_SIZE'] = 150000
         self.cfg['one_step_encoding'] = 0
+        self.cfg['use_edge_probs'] = 0
 
         # validation set info
         self.cfg['valid_path'] = 'valid_sets/synthetic_nrange_15_20_200/'
-        self.cfg['valid_scale_fac'] = 0.0001
+        self.cfg['valid_scale_fac'] = 0.000001
         self.cfg['n_valid'] = 200
 
         # (hyper)parameters for prioritized replay sampling
@@ -133,7 +139,6 @@ class FINDER_API:
             except:
                 print("Error when loading key '{}' from external config file!".format(key))
                 print("Using default value {} instead!".format(self.cfg[key]))
-
         self.DQN = FINDER(config=self.cfg)
     
     def load_test_config(self, config_path):
@@ -159,6 +164,7 @@ class FINDER_API:
         self.DQN = FINDER(config=self.cfg)
 
     def train(self, save_config=True, save_architecture=True):
+        print(self.cfg)
         if save_config:
             self.save_cur_config()
         if save_architecture:  
@@ -190,33 +196,18 @@ class FINDER_API:
                 copy(f'{a_path}/{a_file}', f'{architecture_save_dir}/{a_file}')
             except:
                 print(f"Error when saving current architecture file {a_file}!")
+        # copy dqn files
+        copy_tree('dqn', f'{architecture_save_dir}/dqn')
 
     def load_model(self, ckpt_path):
         self.DQN.LoadModel(ckpt_path)
 
-    def run_test(self, graph_list):
-        lengths = []
-        solutions = []
-        sol_times = []
-        for g in tqdm(graph_list):
-            len, sol, time = self.evaluate(g)
-            lengths.append(len)
-            solutions.append(sol)
-            sol_times.append(time)
+    def run_test(self, test_dir, graph_list=None, scale_factor=0.000001):
+        print(self.cfg)
+        lengths, solutions, sol_times = self.DQN.Evaluate(test_dir=test_dir, scale_factor=scale_factor)
         return lengths, solutions, sol_times
-
-    def evaluate(self, graph):
-        # reset test set
-        self.DQN.ClearTestGraphs()
-        self.DQN.InsertGraph(graph, is_test=True)
-        t1 = time.time()
-        self.DQN.print_test_results = False
-        len, sol = self.DQN.Test(0)
-        t2 = time.time()
-        sol_time = (t2 - t1)
-        return len, sol, sol_time
-
-    def save_train_results(self, model_name='', save_architecture=True):
+    
+    def save_train_results(self, model_name='', save_architecture=True, save_all_ckpts=True, num_best=1):
         g_type = self.cfg['g_type']
         NUM_MIN = self.cfg['NUM_MIN']
         NUM_MAX = self.cfg['NUM_MAX']
@@ -242,18 +233,19 @@ class FINDER_API:
         loss_file = f'Loss_{NUM_MIN}_{NUM_MAX}.csv'
         copy(f'{base_path}/{loss_file}', f'{save_dir}/{loss_file}')
         
-        print("Saving all checkpoint files...")
-        ckpt_save_dir = f'{save_dir}/checkpoints'
-        self.create_dir(ckpt_save_dir)
-        for iter in iterations:
-            self.save_checkpoint_files(ckpt_save_dir, iter)
-        
-        print("Saving best checkpoint file seperately...")
+        if save_all_ckpts:
+            print("Saving all checkpoint files...")
+            ckpt_save_dir = f'{save_dir}/checkpoints'
+            self.create_dir(ckpt_save_dir)
+            for iter in iterations:
+                self.save_checkpoint_files(ckpt_save_dir, iter)
+            
+        print("Saving best checkpoint files seperately...")
         best_ckpt_save_dir = f'{save_dir}/best_checkpoint'
         self.create_dir(best_ckpt_save_dir)
-        min_idx = np.argmin(valid_ratios)
-        min_iter = iterations[min_idx]
-        self.save_checkpoint_files(best_ckpt_save_dir, min_iter)
+        ordered_ckpts = sorted(zip(iterations, valid_ratios), key=lambda tup:tup[1], reverse=False)
+        for k in range(min(num_best,len(ordered_ckpts))):
+            self.save_checkpoint_files(best_ckpt_save_dir, ordered_ckpts[k][0], rank=k+1)
         
         print("Saving config file...")
         config_file = 'current_config.txt'
@@ -266,17 +258,23 @@ class FINDER_API:
             architecture_files = ['FINDER.pyx', 'PrepareBatchGraph.pyx', 'PrepareBatchGraph.pxd', 'PrepareBatchGraph.cpp', 'PrepareBatchGraph.h']
             for a_file in architecture_files:
                 copy(f'{base_path}/architecture/{a_file}', f'{architecture_save_dir}/{a_file}')
-    
+            # copy dqn files
+            try:
+                copy_tree(f'{base_path}/architecture/dqn', f'{architecture_save_dir}/dqn')
+            except:
+                print("Couldn't save dqn files!")
 
-    def save_checkpoint_files(self, ckpt_save_dir, iter):
+
+    def save_checkpoint_files(self, ckpt_save_dir, iter, rank=''):
         g_type = self.cfg['g_type']
         NUM_MIN = self.cfg['NUM_MIN']
         NUM_MAX = self.cfg['NUM_MAX']
         checkpoint_suffixes = ['data-00000-of-00001', 'index', 'meta']
         for suffix in checkpoint_suffixes:
-            ckpt_name = f'nrange_{NUM_MIN}_{NUM_MAX}_iter_{iter}.ckpt.{suffix}'
-            ckpt_path = f'./models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}/checkpoints/{ckpt_name}'
-            copy(ckpt_path, f'{ckpt_save_dir}/{ckpt_name}')
+            old_ckpt_name = f'nrange_{NUM_MIN}_{NUM_MAX}_iter_{iter}.ckpt.{suffix}'
+            new_ckpt_name = f'nrange_{NUM_MIN}_{NUM_MAX}_iter_{iter}_rank_{rank}.ckpt.{suffix}'
+            ckpt_path = f'./models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}/checkpoints/{old_ckpt_name}'
+            copy(ckpt_path, f'{ckpt_save_dir}/{new_ckpt_name}')
     
     def create_dir(self, save_dir):
         if not os.path.exists(save_dir):
