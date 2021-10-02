@@ -198,9 +198,6 @@ class FINDER:
         # [node_init_dim, node_embed_dim]
         w_n2l = tf.Variable(tf.truncated_normal([node_init_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
 
-        # [node_init_dim, node_embed_dim], state input embedding matrix
-        w_s2l = tf.Variable(tf.truncated_normal([state_init_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
-
         # [edge_init_dim, edge_embed_dim]
         w_e2l = tf.Variable(tf.truncated_normal([edge_init_dim, edge_embed_dim], stddev=initialization_stddev), tf.float32)
 
@@ -213,13 +210,6 @@ class FINDER:
         # [node_cnt, node_init_dim] * [node_init_dim, node_embed_dim] = [node_cnt, node_embed_dim], not sparse
         node_init = tf.matmul(tf.cast(self.placeholder_dict['node_input'], tf.float32), w_n2l)
         cur_node_embed = node_init
-        
-        # [batch_size, node_init_dim]
-        num_samples = tf.shape(self.placeholder_dict['subgsum_param'])[0]
-        state_input = tf.ones((num_samples, state_init_dim))
-        # [batch_size, node_init_dim] * [node_init_dim, node_embed_dim] = [batch_size, node_embed_dim]
-        state_init = tf.matmul(tf.cast(state_input, tf.float32), w_s2l)
-        cur_state_embed = state_init
         
         # [edge_cnt, edge_dim] * [edge_dim, embed_dim] = [edge_cnt, embed_dim]
         edge_init = tf.matmul(tf.cast(self.placeholder_dict['edge_input'], tf.float32), w_e2l)
