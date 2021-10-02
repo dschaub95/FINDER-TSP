@@ -13,6 +13,8 @@ public:
     Graph(const int _num_nodes, const int _num_edges, const int* edges_from, const int* edges_to, 
           double** _EdgeWeight, double** _edge_probs, double** _node_feats, const double _NN_ratio);
     ~Graph();
+    void SparsifyWithKNN();
+    void SparsifyWithProbabilities(const int* edges_from, const int* edges_to);
     int num_nodes;
     int num_edges;
     double NN_ratio;
