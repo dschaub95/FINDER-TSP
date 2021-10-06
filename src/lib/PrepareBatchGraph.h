@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <memory>
 #include <set>
+#include <iterator>
 #include <math.h>
 
 class sparseMatrix
@@ -40,6 +41,12 @@ public:
     void SetupPredAll(std::vector<int> idxes,
                       std::vector< std::shared_ptr<Graph> > g_list,
                       std::vector< std::vector<int> > covered);
+    void AddEdgetoBatchgraph(std::shared_ptr<Graph> &g, int local_first, int local_second, int global_first, 
+                             int global_second, std::set<int> c, int &edge_cnt);
+
+    void PrepareNodeInputs(std::vector<int> idxes,
+                        std::vector< std::shared_ptr<Graph> > g_list,
+                        std::vector< std::vector<int> > covered);
     void SetupNodeLevelInput(std::vector<int> idxes,
                         std::vector< std::shared_ptr<Graph> > g_list,
                         std::vector< std::vector<int> > covered);
