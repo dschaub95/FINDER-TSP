@@ -14,13 +14,14 @@ from py_utils.TSP_loader import TSP_loader
 class TSP_plotter:
     def __init__(self) -> None:
         pass
-    def plot_nx_graph(self, graph, draw_edges=True, tour_length=None, solution=None, title=''):
+    def plot_nx_graph(self, graph, draw_edges=True, tour_length=None, solution=None, title='', edge_probs=None, save_path=None):
         plt.style.use('seaborn-paper')
         fig, ax = plt.subplots(1, 1, figsize=(5, 4), sharex=True, sharey=True)
         num_nodes = graph.number_of_nodes()
         labels = dict()
         if solution:
-            labels = {solution[i]:i for i in graph.nodes}
+            labels = {i:i for i in graph.nodes}
+            # labels = {solution[i]:i for i in graph.nodes}
             tour_edges = list(zip(solution, solution[1:]))
             tour_edges.append((solution[-1], solution[0]))
         else:
@@ -29,17 +30,23 @@ class TSP_plotter:
         nx.draw_networkx_nodes(graph, pos, ax=ax, node_color='y', node_size=200)
         if draw_edges:
             nx.draw_networkx_edges(graph, pos, ax=ax, edge_color='y', width=1, alpha=0.2)
-        if solution:
-            nx.draw_networkx_edges(graph, pos, ax=ax, edgelist=tour_edges, edge_color='r', width=2)
+        if edge_probs is not None:
+            # edge_list = np.transpose(np.array(np.where(np.triu(edge_probs) > 0)))
+            edge_list = np.transpose(np.asarray(np.triu(edge_probs) > 0).nonzero())
+            nx.draw_networkx_edges(graph, pos, edgelist=edge_list, ax=ax, label='Edge probability > 10^(-15)', edge_color='g', width=1, alpha=0.5)
+        if solution is not None:
+            nx.draw_networkx_edges(graph, pos, ax=ax, edgelist=tour_edges, edge_color='r', label='Optimal solution', width=1, style='dotted')
         # Draw labels
         nx.draw_networkx_labels(graph, pos, ax=ax, labels=labels, font_size=9)
         # ax.set(xlim=(-0.05, 1.05), ylim=(-0.05, 1.05))
+        ax.legend()
         ax.set_xlabel('x-coordinate')
         ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
         ax.set_ylabel('y-coordinate')
         ax.set_title(title)
         plt.tight_layout()
-        plt.savefig('plots/tour_plot.png', dpi=400)
+        if save_path is not None:
+            plt.savefig(save_path, dpi=400)
         plt.show()
 
 class TSP_solver:
