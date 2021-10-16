@@ -18,7 +18,7 @@ embeddingMethod = 3 # 0:no inclusion of edge weights, 1:inclusion of sum of edge
 ignore_covered_edges = True # whether to ignore edges of which both adjacent nodes have already been selected, default value false
 selected_nodes_inclusion = 1 # 0:no inclusion of selected nodes, 1:start and last selected node inclusion, 2:all selected nodes included, default value 2
 focus_start_end_node = True # whether to specifically include start and end node embedding in the state and decoding process
-state_representation = 0 # 0:concat state, 1:MHA state
+state_representation = 1 # 0:concat state, 1:MHA state
 
 # general training hyperparameters
 IsHuberloss = false # whether to use huberloss as loss function during training, default value false
