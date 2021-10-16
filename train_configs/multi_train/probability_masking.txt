@@ -60,7 +60,7 @@ eps_step = 10000.0 # number of steps until eps_end is reached, default value 100
 MEMORY_SIZE = 150000 # size of the replay memory, default value 150000
 one_step_encoding = False
 use_edge_probs = True
-probability_construction = False
+probability_construction = True
 
 # validation set info
 valid_path = 'data/valid_sets/synthetic_nrange_20_20_100' # path to external validation samples in TSPLIB format, default value 'valid_sets/synthetic_nrange_10_20_200/'
