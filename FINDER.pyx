@@ -4,11 +4,11 @@
 from __future__ import print_function, division
 
 import tensorflow as tf
-tf.compat.v1.set_random_seed(73)
+tf.compat.v1.set_random_seed(37)
 import numpy as np
-np.random.seed(42)
+np.random.seed(37)
 import random
-random.seed(7)
+random.seed(37)
 
 import scipy.linalg as linalg
 from scipy.sparse import csr_matrix
@@ -355,21 +355,12 @@ class FINDER:
         cdef double eps_end = self.cfg['eps_end']
         cdef double eps_step =  self.cfg['eps_step']
         cdef int MAX_ITERATION = self.cfg['MAX_ITERATION']
-        cdef int n_valid = self.cfg['n_valid']
         cdef double loss = 0.0
         cdef double frac, start, end
         cdef int i, iter, idx
 
-        self.PrepareValidData()
-        try:
-            valid_lengths = None
-            valid_path = self.cfg['valid_path']
-            with open(f'{valid_path}/lengths.txt', 'r') as f:
-                lines = f.readlines()
-                lines = [float(line.split(':')[-1].strip()) for line in lines]
-            valid_lengths = lines
-        except:
-            print("Could not load validation lengths!")
+        valid_lengths = self.PrepareValidationData()
+        cdef int n_valid = self.cfg['n_valid']
         self.num_train_prep_cycles = 0
         self.prepare_new_training_graphs()
 
@@ -416,23 +407,24 @@ class FINDER:
                     N_start = N_end
                 frac = 0.0
                 self.UpdateTestDQN()
-                tqdm.write("Running test...")
+                # tqdm.write("Running test...")
                 test_start = time.time()
-                for idx in tqdm(range(n_valid)):
-                    if valid_lengths:
-                        frac += self.Test(idx)[0]/valid_lengths[idx]
-                    else:
-                        frac += self.Test(idx)[0]
+                # for idx in tqdm(range(n_valid)):
+                #     if valid_lengths:
+                #         frac += self.Test(idx)[0]/valid_lengths[idx]
+                #     else:
+                #         frac += self.Test(idx)[0]
+                valid_approx = np.sum(self.Test(range(n_valid))[0]/valid_lengths) / n_valid
                 test_end = time.time()
                 # print("Test finished, sleeping for 5 seconds...")
                 # time.sleep(5)
                 if self.cfg['valid_path']:
-                    valid_approx = frac/len(valid_lengths)
+                    # valid_approx = frac/len(valid_lengths)
                     valid_approx_out.write(f'{iter} {valid_approx}\n')
                 else:
-                    valid_approx_out.write('%.16f\n'%(frac/n_valid))
+                    valid_approx_out.write('%.16f\n'%(valid_approx))
                 valid_approx_out.flush()
-                print('iter %d, eps %.4f, average tour length: %.6f'%(iter, eps, frac/n_valid))
+                print('iter %d, eps %.4f, average tour length: %.6f'%(iter, eps, valid_approx))
                 print ('testing %d graphs time: %.2fs'%(self.cfg['n_valid'], test_end-test_start))
                 N_end = time.clock()
                 print ('%d iterations total time: %.2fs\n'%(self.cfg['save_interval'], N_end-N_start))
@@ -447,65 +439,132 @@ class FINDER:
         loss_out.close()
         self.writer.close()
 
-
-    def Test(self, int gid):
-        graph = self.TestSet.Get(gid)
-
-        if self.cfg['search_strategy'] == 'beam_search+':
-            sol= self.solve_with_beam_search(graph=graph, select_true_best=True)
-        elif self.cfg['search_strategy'] == 'beam_search':
-            sol = self.solve_with_beam_search(graph=graph, select_true_best=False)
-        else:
-            # select greedy
-            if self.print_test_results and gid == 0:
-                verbose = True
-            else:
-                verbose = False
-            sol = self.solve_greedy(graph=graph, verbose=verbose)
-        
-        if self.print_test_results and gid == 0:
-            print(sol)
-        nodes = list(range(graph.num_nodes))
-        solution = sol + list(set(nodes)^set(sol))
-        # print("sol:", sol)
-        # print("nodes:", nodes)
-        # print("Solution:", solution)
-        tour_length = self.utils.getTourLength(graph, solution)
-        return tour_length, solution
-
-    def solve_greedy(self, graph, verbose=False):
+    def solve_greedy_batch(self, g_list, verbose=False):
         # for the test env the norm is not used since no reward is calculated
+        # number of nodes need to be equal for all graphs
         cdef int help_func = self.cfg['help_func']
         cdef int fix_start_node = self.cfg['fix_start_node']
-        self.test_env = mvc_env.py_MvcEnv(1, help_func, 1, fix_start_node)
-        self.test_env.s0(graph)
-        num_nodes = graph.num_nodes
+        cdef int test_batch_size = self.cfg['test_batch_size']
+        self.test_env_list = [mvc_env.py_MvcEnv(1, help_func, 1, fix_start_node) for i in range(len(g_list))]
+        for k, graph in enumerate(g_list):
+            self.test_env_list[k].s0(graph)
+        num_nodes = g_list[0].num_nodes
         cdef int step = 0
-        while not self.test_env.isTerminal():
-            possible_actions = [n for n in range(0,num_nodes) if n not in self.test_env.state]
+        while not self.test_env_list[0].isTerminal():
             # skip prediction if only one node is left for selection
-            if len(possible_actions) == 1:
-                action = possible_actions[0]
-                self.test_env.stepWithoutReward(action)
+            if len(self.test_env_list[0].state) == num_nodes - 1:
+                for test_env in self.test_env_list:
+                    remaining_action = [n for n in range(0,num_nodes) if n not in test_env.state][0]
+                    test_env.stepWithoutReward(remaining_action)
                 continue
+            env_states = [test_env.state for test_env in self.test_env_list]
             if self.cfg['one_step_encoding']:
                 # only encode in the first step
                 if step == 0:
-                    q_values = self.Predict([graph], [self.test_env.state], isSnapShot=False, initPred=True, test=True)     
+                    q_values = self.Predict(g_list, env_states, isSnapShot=False, initPred=True, test=True, batch_size=test_batch_size)     
                 else:
-                    q_values = self.Predict([graph], [self.test_env.state], isSnapShot=False, initPred=False, test=True)
+                    q_values = self.Predict(g_list, env_states, isSnapShot=False, initPred=False, test=True, batch_size=test_batch_size)
             else:
-                q_values = self.Predict([graph], [self.test_env.state], isSnapShot=False, initPred=False, test=False)
+                q_values = self.Predict(g_list, env_states, isSnapShot=False, initPred=False, test=False, 
+                                        probability_masking=self.cfg['probability_construction'], batch_size=test_batch_size)
             if verbose:
-                print(q_values)
-            action = self.argMax(q_values[0])
-            self.test_env.stepWithoutReward(action)
+                print(q_values[0])
+            for k, test_env in enumerate(self.test_env_list):
+                action = self.argMax(q_values[k])
+                test_env.stepWithoutReward(action)
+                if k == 0:
+                    print(f'Selected node: {action}')
             step += 1
-        return self.test_env.state
+        solutions = [test_env.state for test_env in self.test_env_list]
+        return solutions
 
+    def Test(self, graph_ids):
+        g_list = [self.TestSet.Get(gid) for gid in graph_ids]
+        tour_lengths = []
+        solutions = []
+        if 'beam_search' in self.cfg['search_strategy']:
+            for k, graph in enumerate(g_list):
+                if self.cfg['search_strategy'] == 'beam_search+':
+                    sol= self.solve_with_beam_search(graph=graph, select_true_best=True)
+                elif self.cfg['search_strategy'] == 'beam_search':
+                    sol = self.solve_with_beam_search(graph=graph, select_true_best=False)
+                nodes = list(range(graph.num_nodes))
+                solution = sol + list(set(nodes)^set(sol))
+                solutions.append(solution)
+                # print("sol:", sol)
+                # print("nodes:", nodes)
+                # print("Solution:", solution)
+        else:
+            if self.print_test_results:
+                verbose = True
+            else:
+                verbose = False
+            solutions = self.solve_greedy_batch(g_list, verbose=verbose)
+            if self.print_test_results:
+                print(solutions[0])
+        tour_lengths = np.array([self.utils.getTourLength(graph, solution) for graph, solution in zip(g_list, solutions)])   
+        return tour_lengths, solutions
+
+    # def Test(self, int gid):
+    #     graph = self.TestSet.Get(gid)
+
+    #     if self.cfg['search_strategy'] == 'beam_search+':
+    #         sol= self.solve_with_beam_search(graph=graph, select_true_best=True)
+    #     elif self.cfg['search_strategy'] == 'beam_search':
+    #         sol = self.solve_with_beam_search(graph=graph, select_true_best=False)
+    #     else:
+    #         # select greedy
+    #         if self.print_test_results and gid == 0:
+    #             verbose = True
+    #         else:
+    #             verbose = False
+    #         sol = self.solve_greedy(graph=graph, verbose=verbose)
+        
+    #     if self.print_test_results and gid == 0:
+    #         print(sol)
+    #     nodes = list(range(graph.num_nodes))
+    #     solution = sol + list(set(nodes)^set(sol))
+    #     # print("sol:", sol)
+    #     # print("nodes:", nodes)
+    #     # print("Solution:", solution)
+    #     tour_length = self.utils.getTourLength(graph, solution)
+    #     return tour_length, solution
+
+    # def solve_greedy(self, graph, verbose=False):
+    #     # for the test env the norm is not used since no reward is calculated
+    #     cdef int help_func = self.cfg['help_func']
+    #     cdef int fix_start_node = self.cfg['fix_start_node']
+    #     self.test_env = mvc_env.py_MvcEnv(1, help_func, 1, fix_start_node)
+    #     self.test_env.s0(graph)
+    #     num_nodes = graph.num_nodes
+    #     cdef int step = 0
+    #     while not self.test_env.isTerminal():
+    #         possible_actions = [n for n in range(0,num_nodes) if n not in self.test_env.state]
+    #         # skip prediction if only one node is left for selection
+    #         if len(possible_actions) == 1:
+    #             action = possible_actions[0]
+    #             self.test_env.stepWithoutReward(action)
+    #             continue
+    #         if self.cfg['one_step_encoding']:
+    #             # only encode in the first step
+    #             if step == 0:
+    #                 q_values = self.Predict([graph], [self.test_env.state], isSnapShot=False, initPred=True, test=True)     
+    #             else:
+    #                 q_values = self.Predict([graph], [self.test_env.state], isSnapShot=False, initPred=False, test=True)
+    #         else:
+    #             q_values = self.Predict([graph], [self.test_env.state], isSnapShot=False, initPred=False, test=False, 
+    #                                     probability_masking=self.cfg['probability_construction'])
+    #         if verbose:
+    #             print(q_values)
+    #         action = self.argMax(q_values[0])
+    #         self.test_env.stepWithoutReward(action)
+    #         step += 1
+    #     return self.test_env.state
+    
     def solve_with_beam_search(self, graph, select_true_best=False, only_use_cur_qvalue=False):
         cdef int help_func = self.cfg['help_func']
         cdef int fix_start_node = self.cfg['fix_start_node']
+        cdef int test_batch_size = self.cfg['test_batch_size']
         self.test_env_list = [mvc_env.py_MvcEnv(1, help_func, 1, fix_start_node) for i in range(self.cfg['beam_width'])]
         # can be easily batched
         for test_env in self.test_env_list:
@@ -523,11 +582,12 @@ class FINDER:
             if self.cfg['one_step_encoding']:
                 # only encode in the first step
                 if step == 0:
-                    list_pred = self.Predict(g_list, env_states, isSnapShot=False, initPred=True, test=True)     
+                    list_pred = self.Predict(g_list, env_states, isSnapShot=False, initPred=True, test=True, batch_size=test_batch_size)     
                 else:
-                    list_pred = self.Predict(g_list, env_states, isSnapShot=False, initPred=False, test=True)
+                    list_pred = self.Predict(g_list, env_states, isSnapShot=False, initPred=False, test=True, batch_size=test_batch_size)
             else:
-                list_pred = self.Predict(g_list, env_states, isSnapShot=False, initPred=False, test=False)
+                list_pred = self.Predict(g_list, env_states, isSnapShot=False, initPred=False, test=False, 
+                                         probability_masking=self.cfg['probability_construction'], batch_size=test_batch_size)
                 
             
             probabilities_list = [self.softmax(q_values) for q_values in list_pred]
@@ -567,18 +627,20 @@ class FINDER:
             best_tour = sequences[0][0].state
         return best_tour
     
+    def solve_with_augmentation(self, sample_steps):
+        pass
     
-    def PredictWithCurrentQNet(self, g_list, covered):
+    def PredictWithCurrentQNet(self, g_list, covered, probability_masking=False):
         # print("predicting with current QNet...")
-        result = self.Predict(g_list, covered, isSnapShot=False)
+        result = self.Predict(g_list, covered, isSnapShot=False, probability_masking=probability_masking)
         return result
 
-    def PredictWithSnapshot(self, g_list, covered):
+    def PredictWithSnapshot(self, g_list, covered, probability_masking=False):
         # print("predicting with snapshot...")
-        result = self.Predict(g_list, covered, isSnapShot=True)
+        result = self.Predict(g_list, covered, isSnapShot=True, probability_masking=probability_masking)
         return result
     
-    def Predict(self, g_list, covered, isSnapShot, initPred=True, test=False):
+    def Predict(self, g_list, covered, isSnapShot, initPred=True, test=False, probability_masking=False, batch_size=None):
         # for i in range(0, beam_width, bbsize):
         #     if i + bbsize <= beam_width:
         #         end_idx = i + bbsize
@@ -588,21 +650,25 @@ class FINDER:
         #     batch_env_states = env_states[i]
         
         # print("Running Predict")
-        cdef int n_graphs = len(g_list)
-        cdef int i, j, k, bsize
-        full_pred = []
-        # print("number of graphs for prediction:", n_graphs)
-        for i in range(0, n_graphs, self.cfg['BATCH_SIZE']):
-            # makes sure that th indices start at zero for the first batch and go so on for 
+        cdef int bsize 
+        if batch_size is not None:
+            bsize = batch_size
+        else:
             bsize = self.cfg['BATCH_SIZE']
-            if (i + self.cfg['BATCH_SIZE']) > n_graphs:
+        cdef int n_graphs = len(g_list)
+        cdef int i, j, k
+        final_qvalues = []
+        # print("number of graphs for prediction:", n_graphs)
+        for i in range(0, n_graphs, bsize):
+            # makes sure that th indices start at zero for the first batch and go so on for 
+            if (i + bsize) > n_graphs:
                 bsize = n_graphs - i
             batch_idxes = np.zeros(bsize)
             for j in range(i, i + bsize):
                 batch_idxes[j - i] = j
             batch_idxes = np.int32(batch_idxes)
             
-            idx_map_list = self.SetupPredAll(batch_idxes, g_list, covered)
+            idx_map_list, prob_idx_map_list = self.SetupPredAll(batch_idxes, g_list, covered)
             
             my_dict = {}
             for key in self.inputs:
@@ -636,7 +702,7 @@ class FINDER:
                     # result = self.session.run([self.q_on_all, self.tensor_list], feed_dict = my_dict)
                     # print("sucessfully ran training session")
             
-            raw_output = result[0]
+            raw_qvalues = result[0]
             # set Q values for all nodes that have already been chosen to negative inf
             if self.print_params:
                 # print("covered embed padded:", np.array(result[1][0]))
@@ -648,7 +714,22 @@ class FINDER:
                 # print("num nodes", [g.num_nodes for g in g_list])
                 # print("num covered nodes:", [len(cover) for cover in covered])
                 pass
-            # print(np.array(tensor_list[0]))
+            # subtract a fixed value from all nodes that are not connected by a probable edge to the last selected node
+            
+            if probability_masking:
+                pos = 0
+                for j in range(i, i + bsize):
+                    idx_map = idx_map_list[j-i]
+                    prob_idx_map = prob_idx_map_list[j-i]
+                    assert len(idx_map) == len(prob_idx_map)
+                    for k in range(len(idx_map)):
+                        if idx_map[k] < 0:
+                            continue
+                        if prob_idx_map[k] < 0:
+                            raw_qvalues[pos] -= 100
+
+                        pos += 1
+
             pos = 0
             pred = []
             for j in range(i, i + bsize):
@@ -658,14 +739,14 @@ class FINDER:
                     if idx_map[k] < 0:
                         cur_pred[k] = -inf
                     else:
-                        cur_pred[k] = raw_output[pos]
+                        cur_pred[k] = raw_qvalues[pos]
                         pos += 1
                 for k in covered[j]:
                     cur_pred[k] = -inf
                 pred.append(cur_pred)
-            assert (pos == len(raw_output))
-            full_pred.extend(pred)
-        return full_pred
+            assert (pos == len(raw_qvalues))
+            final_qvalues.extend(pred)
+        return final_qvalues
 
     def prepare_inputs(self, prepareBatchGraph):
 
@@ -743,7 +824,7 @@ class FINDER:
         self.prepare_inputs(prepareBatchGraph)
         # print("Edge sum pred:", self.inputs['edge_sum'])
         # print("Ran SetupPredAll")
-        return prepareBatchGraph.idx_map_list
+        return prepareBatchGraph.idx_map_list, prepareBatchGraph.prob_idx_map_list
 
     def Setup_NodeLevelInputs(self, idxes, g_list, covered):
         cdef int aggregatorID = self.cfg['aggregatorID']
@@ -941,7 +1022,8 @@ class FINDER:
             Random = False
             if random.uniform(0,1) >= eps:
                 # print("Making prediction")
-                pred = self.PredictWithCurrentQNet(self.g_list, [env.state for env in self.env_list])
+                pred = self.PredictWithCurrentQNet(self.g_list, [env.state for env in self.env_list], 
+                                                   probability_masking=self.cfg['probability_construction'])
             else:
                 Random = True
 
@@ -966,19 +1048,17 @@ class FINDER:
     def UpdateTestDQN(self):
         self.session.run(self.updateTestDQN)
 
-    def Evaluate(self, test_dir=None, graph_list=None, scale_factor=None):
+    def Evaluate(self, test_dir=None, g_list=None, scale_factor=None):
         if scale_factor is None:
             scale_factor = self.cfg['valid_scale_fac']
-        if graph_list is not None:
-            g_list = graph_list
-        else:
+        if g_list is None:
             print('Loading test graphs...')
             g_list = self.tsp_loader.load_multi_tsp_as_nx(data_dir=test_dir, 
                                                           scale_factor=scale_factor, 
                                                           start_index=0, 
                                                           end_index=None)
         if self.cfg['use_edge_probs']:
-            edge_probs = self.prepare_heatmaps(path=f'{test_dir}/heatmaps', 
+            edge_probs = self.load_heatmaps(path=f'{test_dir}/heatmaps', 
                                                num_cycles=None, 
                                                num_samples_per_cycle=None)
         else:
@@ -986,19 +1066,23 @@ class FINDER:
         # reset test set
         self.ClearTestGraphs()
         self.InsertGraphs(g_list, is_test=True, edge_probs=edge_probs)
-        
+        n_graphs = len(g_list)
         self.print_test_results = False
-        lengths = []
-        solutions = []
-        sol_times = []
-        for idx in tqdm(range(len(g_list))):
-            t1 = time.time()
-            length, sol = self.Test(idx)
-            t2 = time.time()
-            sol_time = (t2 - t1)
-            sol_times.append(sol_time)
-            lengths.append(length)
-            solutions.append(sol)
+        # lengths = []
+        # solutions = []
+        # sol_times = []
+        # for idx in tqdm(range(n_graphs)):
+        #     t1 = time.time()
+        #     length, sol = self.Test(idx)
+        #     t2 = time.time()
+        #     sol_time = (t2 - t1)
+        #     sol_times.append(sol_time)
+        #     lengths.append(length)
+        #     solutions.append(sol)
+        t1 = time.time()
+        lengths, solutions = self.Test(range(n_graphs))
+        t2 = time.time()
+        sol_times = [(t2 - t1) / n_graphs for k in range(n_graphs)]
         return lengths, solutions, sol_times
     
     def prepare_new_training_graphs(self):
@@ -1018,7 +1102,7 @@ class FINDER:
                                                           start_index=j*n_generator, 
                                                           end_index=(j+1)*n_generator)
             if self.cfg['use_edge_probs']:
-                edge_probs = self.prepare_heatmaps(path=f'{train_path}/heatmaps', 
+                edge_probs = self.load_heatmaps(path=f'{train_path}/heatmaps', 
                                                    num_cycles=self.num_train_prep_cycles, 
                                                    num_samples_per_cycle=n_generator)
             else:
@@ -1032,25 +1116,35 @@ class FINDER:
         self.InsertGraphs(g_list, is_test=False, edge_probs=edge_probs)
         self.num_train_prep_cycles += 1
 
-    def PrepareValidData(self):
+    def PrepareValidationData(self):
         cdef int n_valid = self.cfg['n_valid']
         valid_path = self.cfg['valid_path']
         if self.cfg['valid_path']:
             g_list = self.tsp_loader.load_multi_tsp_as_nx(data_dir=valid_path, 
-                                                          scale_factor=self.cfg['valid_scale_fac'])
+                                                          scale_factor=self.cfg['valid_scale_fac'], start_index=0, end_index=n_valid)
             n_valid = len(g_list)
+            self.cfg['n_valid'] = n_valid
             print(f"\nSucessfully loaded {n_valid} validation graphs!")
             if self.cfg['use_edge_probs']:
-                edge_probs = self.prepare_heatmaps(path=f'{valid_path}/heatmaps', num_cycles=0, num_samples_per_cycle=n_valid)
+                edge_probs = self.load_heatmaps(path=f'{valid_path}/heatmaps', num_cycles=0, num_samples_per_cycle=n_valid)
             else:
                 edge_probs = None
         else:
             print('Generating validation graphs...')
             g_list = self.generate_graphs(n_valid)
             edge_probs = None
-        
 
         self.InsertGraphs(g_list, is_test=True, edge_probs=edge_probs)
+        try:
+            valid_lengths = None
+            valid_path = self.cfg['valid_path']
+            with open(f'{valid_path}/lengths.txt', 'r') as f:
+                lines = f.readlines()
+                lines = [float(line.split(':')[-1].strip()) for line in lines]
+            valid_lengths = np.array(lines)[0:n_valid]
+        except:
+            print("Could not load validation lengths!")
+        return valid_lengths
 
     def generate_graphs(self, int num_graphs):
         cdef int num_min = self.cfg['NUM_MIN']
@@ -1063,7 +1157,7 @@ class FINDER:
             g_list.append(g)
         return g_list
 
-    def prepare_heatmaps(self, path, num_cycles, num_samples_per_cycle):
+    def load_heatmaps(self, path, num_cycles, num_samples_per_cycle):
         atoi = lambda text : int(text) if text.isdigit() else text
         natural_keys = lambda text : [atoi(c) for c in re.split('(\d+)', text)]
         try:
@@ -1082,12 +1176,10 @@ class FINDER:
                 continue
             if end_index > (num_cycles + 1) * num_samples_per_cycle:
                 continue
-            print(fname)
             if heat_map is not None:
                 heat_map = np.concatenate([heat_map, np.load(f'{path}/{fname}')], axis=0)
             else:
                 heat_map = np.load(f'{path}/{fname}')
-        print(heat_map.shape)
         return heat_map
 
     def GenNetwork(self, g, edge_prob=None):    #networkx2four
@@ -1126,7 +1218,8 @@ class FINDER:
         # insert prbability calculation here --> precalculate instead
         for k, g in enumerate(g_list):
             if edge_probs is not None:
-                edge_prob = edge_probs[k]
+                # edge_prob = edge_probs[k]
+                edge_prob = self.prepare_heatmap(edge_probs[k])
             else:
                 edge_prob = None
             if is_test:
@@ -1137,6 +1230,11 @@ class FINDER:
                 t = self.ngraph_train
                 self.ngraph_train += 1
                 self.TrainSet.InsertGraph(t, self.GenNetwork(g, edge_prob=edge_prob))
+
+    def prepare_heatmap(self, raw_heatmap):
+        heat_map = np.maximum(raw_heatmap, raw_heatmap.transpose())
+        np.fill_diagonal(heat_map, 0)
+        return heat_map
 
     def ClearTrainGraphs(self):
         self.ngraph_train = 0

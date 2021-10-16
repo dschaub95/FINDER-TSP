@@ -102,9 +102,10 @@ class FINDER_API:
         self.cfg['decoder_type'] = 0
         self.cfg['REG_HIDDEN'] = 32
         
-        # search startegy
+        # search startegy/ testing parameters
         self.cfg['search_strategy'] = 'greedy'
         self.cfg['beam_width'] = 64
+        self.cfg['test_batch_size'] = 256
 
         # Q-learning hyperparameters
         self.cfg['IsDoubleDQN'] = 0
@@ -117,9 +118,10 @@ class FINDER_API:
         self.cfg['MEMORY_SIZE'] = 150000
         self.cfg['one_step_encoding'] = 0
         self.cfg['use_edge_probs'] = 0
+        self.cfg['probability_construction'] = 0
 
         # validation set info
-        self.cfg['valid_path'] = 'valid_sets/synthetic_nrange_15_20_200/'
+        self.cfg['valid_path'] = 'valid_sets/synthetic_nrange_20_20_100/'
         self.cfg['valid_scale_fac'] = 0.000001
         self.cfg['n_valid'] = 200
 
@@ -202,9 +204,9 @@ class FINDER_API:
     def load_model(self, ckpt_path):
         self.DQN.LoadModel(ckpt_path)
 
-    def run_test(self, test_dir, graph_list=None, scale_factor=0.000001):
+    def run_test(self, test_dir=None, graph_list=None, scale_factor=0.000001):
         print(self.cfg)
-        lengths, solutions, sol_times = self.DQN.Evaluate(test_dir=test_dir, scale_factor=scale_factor)
+        lengths, solutions, sol_times = self.DQN.Evaluate(test_dir=test_dir, g_list=graph_list, scale_factor=scale_factor)
         return lengths, solutions, sol_times
     
     def save_train_results(self, model_name='', save_architecture=True, save_all_ckpts=True, num_best=1):

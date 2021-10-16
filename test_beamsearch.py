@@ -39,14 +39,14 @@ api.DQN.cfg['BATCH_SIZE'] = batch_size
 suffix = f'{search_strategy}_{beam_width}'
 
 # sanity check
-lengths, solutions, sol_times = api.run_test(data_dir_valid, scale_factor=0.000001)
+lengths, solutions, sol_times = api.run_test(test_dir=data_dir_valid, scale_factor=0.000001)
 approx_ratios, mean_approx_ratio = get_approx_ratios(data_dir_valid, lengths)
 print(mean_approx_ratio)
 
 mean_approx_ratios = []
 for data_dir in test_dirs[0:1]:
     # run test
-    lengths, solutions, sol_times = api.run_test(data_dir, scale_factor=0.000001)
+    lengths, solutions, sol_times = api.run_test(test_dir=data_dir, scale_factor=0.000001)
     approx_ratios, mean_approx_ratio = get_approx_ratios(data_dir, lengths)
     mean_approx_ratios.append(mean_approx_ratio)
     print(mean_approx_ratio)
