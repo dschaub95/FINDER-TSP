@@ -152,6 +152,9 @@ cdef class py_PrepareBatchGraph:
     def idx_map_list(self):
         return deref(self.inner_PrepareBatchGraph).idx_map_list
     @property
+    def prob_idx_map_list(self):
+        return deref(self.inner_PrepareBatchGraph).prob_idx_map_list
+    @property
     def subgraph_id_span(self):
         return deref(self.inner_PrepareBatchGraph).subgraph_id_span
     @property

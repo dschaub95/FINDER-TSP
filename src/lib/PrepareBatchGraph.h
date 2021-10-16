@@ -51,10 +51,7 @@ public:
                         std::vector< std::shared_ptr<Graph> > g_list,
                         std::vector< std::vector<int> > covered);
 
-    std::vector<int> GetStatusInfo(std::shared_ptr<Graph> g, int num, const int* covered, std::vector<int>& idx_map);
-    int GetNodeStatus(std::shared_ptr<Graph> g, int num, const int* covered, std::vector<int>& idx_map, std::set<int> to_be_deleted_nodes);
-    int GetEdgeStatus(std::shared_ptr<Graph> g, int num, const int* covered, std::set<int> to_be_deleted_nodes);
-    std::set<int> GetToBeDeletedNodes(std::shared_ptr<Graph> g, int num, const int* covered);
+    std::vector<int> GetStatusInfo(std::shared_ptr<Graph> g, int num, const int* covered, std::vector<int>& idx_map, std::vector<int>& prob_idx_map);
 
     std::shared_ptr<sparseMatrix> act_select;
     std::shared_ptr<sparseMatrix> rep_global;
@@ -74,6 +71,7 @@ public:
     std::shared_ptr<sparseMatrix> pad_reverse_param;
 
     std::vector< std::vector< int > > idx_map_list;
+    std::vector< std::vector< int > > prob_idx_map_list;
     std::vector< std::pair< int,int > > subgraph_id_span;
     std::vector< std::vector< double > > aux_feat;
     std::vector< std::vector< double > > node_feats;

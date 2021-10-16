@@ -56,10 +56,11 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
         for (int j = 0; j < num_nodes; ++j)
         {
             EdgeWeight[i][j] = _EdgeWeight[i][j];
+            // edge_probs[i][j] = _edge_probs[i][j];
             // cut off edge probs below cut-off value
-            if (_edge_probs[i][j] < pow(10,-16))
+            if (_edge_probs[i][j] < pow(10,-10))
             {
-                edge_probs[i][j] = 0.0;
+                edge_probs[i][j] = 0;
             }
             else
             {
@@ -81,7 +82,7 @@ Graph::Graph(const int _num_nodes, const int _num_edges, const int* edges_from, 
     {
         SparsifyWithKNN();
     }
-    else if (1)
+    else if (NN_ratio == 2.0)
     {
         SparsifyWithProbabilities(edges_from, edges_to);
     }

@@ -36,6 +36,7 @@ cdef extern from "./src/lib/PrepareBatchGraph.h":
         shared_ptr[sparseMatrix] pad_reverse_param
 
         vector[vector[int]]  idx_map_list
+        vector[vector[int]]  prob_idx_map_list
         vector[pair[int,int]] subgraph_id_span
         vector[vector[double]]  aux_feat
         vector[vector[double]]  node_feats
