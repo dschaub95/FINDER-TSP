@@ -31,7 +31,7 @@ test_dirs = [data_dir_0]
 
 # use beam search during testing
 search_strategy = 'beam_search+'
-batch_size = 256
+batch_size = 512
 
 api.DQN.cfg['search_strategy'] = search_strategy
 api.DQN.cfg['beam_width'] = beam_width
