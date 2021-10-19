@@ -19,7 +19,7 @@ api = FINDER_API(train_config_file_path)
 api.train()
 
 if len(sys.argv) > 1:
-    api.save_train_results(model_name=train_config_file_name, num_best=100, save_all_ckpts=False)
+    api.save_train_results(model_name=train_config_file_name, num_best=10, save_all_ckpts=False)
 else:
     model_name = 'model'
-    api.save_train_results(model_name=model_name, num_best=100, save_all_ckpts=False)
+    api.save_train_results(model_name=model_name, num_best=10, save_all_ckpts=False)
