@@ -480,28 +480,39 @@ class FINDER:
 
     def Test(self, graph_ids):
         g_list = [self.TestSet.Get(gid) for gid in graph_ids]
-        tour_lengths = []
-        solutions = []
-        if 'beam_search' in self.cfg['search_strategy']:
-            for k, graph in enumerate(g_list):
-                if self.cfg['search_strategy'] == 'beam_search+':
-                    sol= self.solve_with_beam_search(graph=graph, select_true_best=True)
-                elif self.cfg['search_strategy'] == 'beam_search':
-                    sol = self.solve_with_beam_search(graph=graph, select_true_best=False)
-                nodes = list(range(graph.num_nodes))
-                solution = sol + list(set(nodes)^set(sol))
-                solutions.append(solution)
-                # print("sol:", sol)
-                # print("nodes:", nodes)
-                # print("Solution:", solution)
+        # tour_lengths = []
+        # solutions = []
+        if self.cfg['search_strategy'] == 'beam_search+':
+            raw_solutions = [self.solve_with_beam_search(graph=graph, select_true_best=True) for graph in tqdm(g_list)]
+        elif self.cfg['search_strategy'] == 'beam_search':
+            raw_solutions = [self.solve_with_beam_search(graph=graph, select_true_best=False) for graph in tqdm(g_list)]
+        
+        # if 'beam_search' in self.cfg['search_strategy']:
+        #     if self.cfg['search_strategy'] == 'beam_search+':
+        #         raw_solutions = [self.solve_with_beam_search(graph=graph, select_true_best=True) for graph in tqdm(g_list)]
+        #     elif self.cfg['search_strategy'] == 'beam_search':
+        #         raw_solutions = [self.solve_with_beam_search(graph=graph, select_true_best=False) for graph in tqdm(g_list)]
+        #     # solutions = [sol + list(set(range(g_list[k].num_nodes))^set(sol)) for k, sol in enumerate(raw_solutions)]
+        #     for k, graph in tqdm(enumerate(g_list)):
+        #         if self.cfg['search_strategy'] == 'beam_search+':
+        #             sol = self.solve_with_beam_search(graph=graph, select_true_best=True)
+        #         elif self.cfg['search_strategy'] == 'beam_search':
+        #             sol = self.solve_with_beam_search(graph=graph, select_true_best=False)
+        #         nodes = list(range(graph.num_nodes))
+        #         solution = sol + list(set(nodes)^set(sol))
+        #         solutions.append(solution)
+        #         # print("sol:", sol)
+        #         # print("nodes:", nodes)
+        #         # print("Solution:", solution)
         else:
             if self.print_test_results:
                 verbose = True
             else:
                 verbose = False
-            solutions = self.solve_greedy_batch(g_list, verbose=verbose)
+            raw_solutions = self.solve_greedy_batch(g_list, verbose=verbose)
             if self.print_test_results:
-                print(solutions[0])
+                print(raw_solutions[0])
+        solutions = [sol + list(set(range(g_list[k].num_nodes))^set(sol)) for k, sol in enumerate(raw_solutions)]
         tour_lengths = np.array([self.utils.getTourLength(graph, solution) for graph, solution in zip(g_list, solutions)])   
         return tour_lengths, solutions
 

@@ -11,7 +11,8 @@ if len(sys.argv) > 1:
     model_name = sys.argv[1]
 else:
     model_name = None
-model_path = f'saved_models/tsp_2d/nrange_20_20/{model_name}'
+# model_path = f'saved_models/tsp_2d/nrange_20_20/{model_name}'
+model_path = f'test_models/{model_name}'
 
 config_path = f'{model_path}/config.txt'
 api = FINDER_API(config_path=config_path)

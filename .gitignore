@@ -13,6 +13,9 @@ results/**
 plots/*
 !plots/.gitkeep
 
+test_models/**
+!test_models/.gitkeep
+
 data/*
 !data/.gitkeep
 data/valid_sets
