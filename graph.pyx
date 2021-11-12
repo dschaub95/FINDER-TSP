@@ -122,11 +122,11 @@ cdef class py_GSet:
         deref(self.inner_gset).InsertGraph(gid, graph.inner_graph)
 
     def Sample(self):
-        temp_innerGraph=deref(deref(self.inner_gset).Sample())   #得到了Graph 对象
+        temp_innerGraph = deref(deref(self.inner_gset).Sample())   #得到了Graph 对象
         return self.G2P(temp_innerGraph)
 
     def Get(self,int gid):
-        temp_innerGraph=deref(deref(self.inner_gset).Get(gid))   #得到了Graph 对象
+        temp_innerGraph = deref(deref(self.inner_gset).Get(gid))   #得到了Graph 对象
         return self.G2P(temp_innerGraph)
 
     def Clear(self):

@@ -32,6 +32,7 @@ import nstep_replay_mem_prioritized
 import mvc_env
 import pyx_utils
 from py_utils.TSP_loader import TSP_loader
+from py_utils.TSP_transformer import TSP_EucTransformer
 from dqn.FINDER_decoder import MLPdecoder, AttentionDecoder
 from dqn.FINDER_state_encoder import MHAStateEncoder, BasicStateEncoder
 
@@ -66,15 +67,18 @@ class FINDER:
         #Simulator
         self.TrainSet = graph.py_GSet() # initializes the training and test set object
         self.TestSet = graph.py_GSet()
+        self.SampleSet = graph.py_GSet()
+        self.ngraph_train = 0
+        self.ngraph_test = 0
+        self.ngraph_sample = 0
+
         self.inputs = dict()
         self.utils = pyx_utils.pyx_Utils()
         self.tsp_loader = TSP_loader()
 
-        self.ngraph_train = 0
-        self.ngraph_test = 0
-        self.env_list=[]
-        self.g_list=[]
-        self.pred=[]
+        self.env_list = []
+        self.g_list = []
+        self.pred = []
 
         if self.cfg['IsPrioritizedSampling']:
             self.nStepReplayMem = nstep_replay_mem_prioritized.py_Memory(self.cfg['epsilon'], self.cfg['alpha'], self.cfg['beta'], self.cfg['beta_increment_per_sampling'], 
@@ -450,7 +454,10 @@ class FINDER:
             self.test_env_list[k].s0(graph)
         num_nodes = g_list[0].num_nodes
         cdef int step = 0
-        while not self.test_env_list[0].isTerminal():
+        for i in tqdm(range(num_nodes)):
+            if self.test_env_list[0].isTerminal():
+                break
+            # while not self.test_env_list[0].isTerminal():
             # skip prediction if only one node is left for selection
             if len(self.test_env_list[0].state) == num_nodes - 1:
                 for test_env in self.test_env_list:
@@ -472,7 +479,7 @@ class FINDER:
             for k, test_env in enumerate(self.test_env_list):
                 action = self.argMax(q_values[k])
                 test_env.stepWithoutReward(action)
-                if k == 0:
+                if k == 0 and verbose:
                     print(f'Selected node: {action}')
             step += 1
         solutions = [test_env.state for test_env in self.test_env_list]
@@ -486,7 +493,13 @@ class FINDER:
             raw_solutions = [self.solve_with_beam_search(graph=graph, select_true_best=True) for graph in tqdm(g_list)]
         elif self.cfg['search_strategy'] == 'beam_search':
             raw_solutions = [self.solve_with_beam_search(graph=graph, select_true_best=False) for graph in tqdm(g_list)]
-        
+        elif self.cfg['search_strategy'] == 'sampling':
+            sample_steps = self.cfg['sample_steps']
+            # restrict the size of one chunk such that max 10000 graphs are loaded
+            chunk_size = int(10000 / sample_steps)
+            g_list_chunked = [g_list[i:i+chunk_size] for i in range(0,len(g_list),chunk_size)]
+            raw_solutions_chunked = [self.solve_with_augmentation(chunk, sample_steps) for chunk in tqdm(g_list_chunked)]
+            raw_solutions = [solution for chunk in raw_solutions_chunked for solution in chunk]
         # if 'beam_search' in self.cfg['search_strategy']:
         #     if self.cfg['search_strategy'] == 'beam_search+':
         #         raw_solutions = [self.solve_with_beam_search(graph=graph, select_true_best=True) for graph in tqdm(g_list)]
@@ -515,62 +528,6 @@ class FINDER:
         solutions = [sol + list(set(range(g_list[k].num_nodes))^set(sol)) for k, sol in enumerate(raw_solutions)]
         tour_lengths = np.array([self.utils.getTourLength(graph, solution) for graph, solution in zip(g_list, solutions)])   
         return tour_lengths, solutions
-
-    # def Test(self, int gid):
-    #     graph = self.TestSet.Get(gid)
-
-    #     if self.cfg['search_strategy'] == 'beam_search+':
-    #         sol= self.solve_with_beam_search(graph=graph, select_true_best=True)
-    #     elif self.cfg['search_strategy'] == 'beam_search':
-    #         sol = self.solve_with_beam_search(graph=graph, select_true_best=False)
-    #     else:
-    #         # select greedy
-    #         if self.print_test_results and gid == 0:
-    #             verbose = True
-    #         else:
-    #             verbose = False
-    #         sol = self.solve_greedy(graph=graph, verbose=verbose)
-        
-    #     if self.print_test_results and gid == 0:
-    #         print(sol)
-    #     nodes = list(range(graph.num_nodes))
-    #     solution = sol + list(set(nodes)^set(sol))
-    #     # print("sol:", sol)
-    #     # print("nodes:", nodes)
-    #     # print("Solution:", solution)
-    #     tour_length = self.utils.getTourLength(graph, solution)
-    #     return tour_length, solution
-
-    # def solve_greedy(self, graph, verbose=False):
-    #     # for the test env the norm is not used since no reward is calculated
-    #     cdef int help_func = self.cfg['help_func']
-    #     cdef int fix_start_node = self.cfg['fix_start_node']
-    #     self.test_env = mvc_env.py_MvcEnv(1, help_func, 1, fix_start_node)
-    #     self.test_env.s0(graph)
-    #     num_nodes = graph.num_nodes
-    #     cdef int step = 0
-    #     while not self.test_env.isTerminal():
-    #         possible_actions = [n for n in range(0,num_nodes) if n not in self.test_env.state]
-    #         # skip prediction if only one node is left for selection
-    #         if len(possible_actions) == 1:
-    #             action = possible_actions[0]
-    #             self.test_env.stepWithoutReward(action)
-    #             continue
-    #         if self.cfg['one_step_encoding']:
-    #             # only encode in the first step
-    #             if step == 0:
-    #                 q_values = self.Predict([graph], [self.test_env.state], isSnapShot=False, initPred=True, test=True)     
-    #             else:
-    #                 q_values = self.Predict([graph], [self.test_env.state], isSnapShot=False, initPred=False, test=True)
-    #         else:
-    #             q_values = self.Predict([graph], [self.test_env.state], isSnapShot=False, initPred=False, test=False, 
-    #                                     probability_masking=self.cfg['probability_construction'])
-    #         if verbose:
-    #             print(q_values)
-    #         action = self.argMax(q_values[0])
-    #         self.test_env.stepWithoutReward(action)
-    #         step += 1
-    #     return self.test_env.state
     
     def solve_with_beam_search(self, graph, select_true_best=False, only_use_cur_qvalue=False):
         cdef int help_func = self.cfg['help_func']
@@ -638,8 +595,41 @@ class FINDER:
             best_tour = sequences[0][0].state
         return best_tour
     
-    def solve_with_augmentation(self, sample_steps):
-        pass
+    def solve_with_augmentation(self, g_list, sample_steps):
+        # get problem coordinates
+        problems = np.array([g.node_feats for g in g_list])
+        # extract edge probabilities
+        edge_probs = np.array([g.edge_probs for g in g_list])
+        # print(edge_probs[0])
+        # tile edge probs 
+        # edge_probs = np.tile(edge_probs, (sample_steps,1,1))
+        edge_probs = np.array([[edge_prob for step in range(sample_steps)] for edge_prob in edge_probs])
+        edge_probs = np.reshape(edge_probs, (-1, edge_probs.shape[-2], edge_probs.shape[-1]))
+        # transform graphs
+        transformer = TSP_EucTransformer()
+        problems_transformed = [[transformer.apply_random_transfo(problem) for step in range(sample_steps-1)] for problem in problems]
+        problems_transformed = np.append(np.expand_dims(problems,axis=1), problems_transformed, axis=1)
+        problems_transformed = np.reshape(problems_transformed, (-1, problems_transformed.shape[-2], problems_transformed.shape[-1]))
+        # save as nx graph and potentially flatten list
+        nx_tranformed_g_list = [transformer.save_TSP_as_nx(problem) for problem in tqdm(problems_transformed)]
+        
+        # load transformed graphs into sample set
+        self.ClearSampleGraphs()
+        self.InsertGraphs(nx_tranformed_g_list, is_test=False, is_sample=True, edge_probs=edge_probs)
+        # get new g_list consisting of py Graph objects
+        pyGraph_g_list = [self.SampleSet.Get(gid) for gid in range(len(nx_tranformed_g_list))]
+        # run greedy batch test
+        raw_solutions = self.solve_greedy_batch(pyGraph_g_list, verbose=False)
+        solutions = [sol + list(set(range(pyGraph_g_list[k].num_nodes))^set(sol)) for k, sol in enumerate(raw_solutions)]
+        # select best solution for each original graph
+        assert len(solutions) % sample_steps == 0
+        sub_g_solutions = [solutions[i:i+sample_steps] for i in range(0,len(solutions),sample_steps)]
+
+        sub_g_tour_lengths = [[self.utils.getTourLength(g_list[k], solution) for solution in sub_solutions] for k, sub_solutions in enumerate(sub_g_solutions)]
+        final_solutions = [sub_solutions[np.argmin(sub_g_tour_lengths[k])] for k, sub_solutions in enumerate(sub_g_solutions)]
+        # retun list of final solutions
+        assert len(final_solutions) == len(g_list)
+        return final_solutions
     
     def PredictWithCurrentQNet(self, g_list, covered, probability_masking=False):
         # print("predicting with current QNet...")
@@ -1221,12 +1211,11 @@ class FINDER:
             B = np.array([0])
             W = np.array([0])
             F = np.array([0])
-        return graph.py_Graph(num_nodes, num_edges, A, B, W, P, F, NN_ratio)
-             
+        return graph.py_Graph(num_nodes, num_edges, A, B, W, P, F, NN_ratio)   
 
-    def InsertGraphs(self, g_list, is_test, edge_probs=None):
+    def InsertGraphs(self, g_list, is_test, is_sample=False, edge_probs=None):
         cdef int t
-        # insert prbability calculation here --> precalculate instead
+        # insert probability calculation here --> precalculate instead
         for k, g in enumerate(g_list):
             if edge_probs is not None:
                 # edge_prob = edge_probs[k]
@@ -1237,6 +1226,10 @@ class FINDER:
                 t = self.ngraph_test
                 self.ngraph_test += 1
                 self.TestSet.InsertGraph(t, self.GenNetwork(g, edge_prob=edge_prob))
+            elif is_sample:
+                t = self.ngraph_sample
+                self.ngraph_sample += 1
+                self.SampleSet.InsertGraph(t, self.GenNetwork(g, edge_prob=edge_prob))
             else:
                 t = self.ngraph_train
                 self.ngraph_train += 1
@@ -1254,6 +1247,10 @@ class FINDER:
     def ClearTestGraphs(self):
         self.ngraph_test = 0
         self.TestSet.Clear()
+    
+    def ClearSampleGraphs(self):
+        self.ngraph_sample = 0
+        self.SampleSet.Clear()
     
     def SaveModel(self,model_path):
         # saves the model based on tf saver

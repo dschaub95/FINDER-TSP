@@ -5,6 +5,9 @@ MODELS=./test_models/*
 echo Select CUDA_VISIBLE_DEVICES
 read cuda_device
 
+echo Select search strategy -> 0:greedy, 1:beam_search 2:augmentation
+read search_strategy
+
 echo Select beam width
 read beamwidth
 

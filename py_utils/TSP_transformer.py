@@ -7,174 +7,314 @@ import random
 
 class TSP_EucTransformer:
     
-    def __init__(self, sampling_steps=64) -> None:
-        self.problems = None
-        self.transformed_problems = None
-        
-        self.problem_size = None
-        self.dimension = None
-        self.num_problems = None
-        self.sampling_steps = sampling_steps
+    def __init__(self) -> None:
+        pass
 
-    def load_TSPs_from_nx(self, g_list):
-        # extract node features (node position)
-        self.problems = np.array([[g.nodes[k]['coord'] for k in g.nodes()] for g in g_list])
-        self.transformed_problems = np.tile(np.expand_dims(self.problems, axis=1), (1,self.sampling_steps,1,1))
-        # self.transformed_problems = np.copy(self.problems)
-        self.dimension = self.problems.shape[-1]
-        self.problem_size = self.problems.shape[-2]
-        self.num_problems = self.problems.shape[0]
+    def load_TSP_from_nx(self, g):
+        return np.array([g.nodes[k]['coord'] for k in g.nodes()])
 
-    def load_TSP_from_coords(self, problems):
-        self.problems = np.array(problems)
-        self.transformed_problems = np.tile(np.expand_dims(self.problems, axis=1), (1,self.sampling_steps,1,1))
-        # self.transformed_problems = np.copy(self.problems)
-        self.dimension = self.problems.shape[-1]
-        self.problem_size = self.problems.shape[-2]
-        self.num_problems = self.problems.shape[0]
+    def save_TSP_as_nx(self, problem):
+        edges = [(s[0],t[0],np.linalg.norm(s[1]-t[1])) for s,t in combinations(enumerate(problem),2)]
+        g = nx.Graph()
+        g.add_weighted_edges_from(edges)
+        feature_dict = {k: {'coord': problem[k]} for k in range(problem.shape[0])} 
+        nx.set_node_attributes(g, feature_dict)
+        return g
 
-    def save_TSP_as_nx(self, problems=None):
-        if problems is None:
-            problems = self.problems
-        g_list = []
-        for problem in problems:
-            edges = [(s[0],t[0],np.linalg.norm(s[1]-t[1])) for s,t in combinations(enumerate(problem),2)]
-            g = nx.Graph()
-            g.add_weighted_edges_from(edges)
-            feature_dict = {k: {'coord': problem[k]} for k in range(self.problem_size)} 
-            nx.set_node_attributes(g, feature_dict)
-            g_list.append(g)
-        return g_list
-    
-    def reset_TSPs_to_default(self):
-        self.transformed_problems = np.tile(self.problems, (1,self.sampling_steps,1,1))
-    
-    def scale_TSP(self, scaler=1.0, problems=None):
-        if problems is None:
-            problems = self.problems
-        self.transformed_problems = problems * scaler
+    def scale_TSP(self, problem, scaler=1.0):
+        return problem * scaler
 
-    def flip_TSP_coordinates(self, problems=None):
-        # if self.dimension == 2:
-        #     matrix = np.array([[0,1],[1,0]])
-        #     self.coordinates = self.coordinates @ matrix
-        # else:
-        #     temp = self.coordinates.transpose()
-        #     np.random.shuffle(temp)
-        #     self.coordinates = temp.transpose()
-        if problems is None:
-            problems = self.problems
-        self.problems = self.problems[:,:,::-1]
+    def flip_TSP_coordinates(self, problem):
+        return problem[:,::-1]
 
-    def pomo_TSP(self, variant=0):
-        assert self.dimension == 2
-        x = self.problems[:,:,0:1]
-        y = self.problems[:,:,1::]
+    def pomo_TSP(self, problem, variant=0):
+        assert problem.shape[1] == 2
+        x = problem[:,0:1]
+        y = problem[:,1::]
         if variant == 0:
-            self.problems = np.concatenate((x, y), -1)
+            return np.concatenate((x, y), -1)
         elif variant == 1:
-            self.problems = np.concatenate((1 - x, y), 2)
+            return np.concatenate((1 - x, y), -1)
         elif variant == 2:
-            self.problems = np.concatenate((x, 1 - y), -1)
+            return np.concatenate((x, 1 - y), -1)
         elif variant == 3:
-            self.problems = np.concatenate((1 - x, 1 - y), -1)
+            return np.concatenate((1 - x, 1 - y), -1)
         elif variant == 4:
-            self.problems = np.concatenate((y, x), -1)
+            return np.concatenate((y, x), -1)
         elif variant == 5:
-            self.problems = np.concatenate((1 - y, x), -1)
+            return np.concatenate((1 - y, x), -1)
         elif variant == 6:
-            self.problems = np.concatenate((y, 1 - x), -1)
+            return np.concatenate((y, 1 - x), -1)
         elif variant == 7:
-            self.problems = np.concatenate((1 - y, 1 - x), -1)
+            return np.concatenate((1 - y, 1 - x), -1)
     
-    def flip_TSP_simple(self, refit=False):
+    def flip_TSP_simple(self, problem, refit=False):
         # can be realized as a (N+1)D rotation along various axis
-        assert self.dimension == 2
-        self.center_TSP(refit)
-        temp = np.concatenate((self.problems, np.zeros((self.num_problems, self.problem_size, 1))), 2)
+        dimension = problem.shape[1]
+        assert dimension == 2
+        problem = self.center_TSP(problem, refit)
+        temp = np.concatenate((problem, np.zeros((problem.shape[0], 1))), -1)
         temp = rotate_3D(temp, degree=180)
-        self.problems = temp[:,:,0:self.dimension]
+        problem = temp[:,0:dimension]
         if refit:
-            self.fit_TSP_into_square()
-    
-    def flip_TSP(self, flip_axis=0, refit=False):
+            problem = self.fit_TSP_into_square(problem)
+        return problem
+
+    def flip_TSP(self, problem, flip_axis=0, refit=False):
         if flip_axis == 0:
             pass
         elif flip_axis == 1:
-            self.flip_TSP_simple()
+            problem =  self.flip_TSP_simple(problem)
         elif flip_axis == 2:
-            self.rotate_TSP(degree=90, refit=refit)
-            self.flip_TSP_simple()
-            self.rotate_TSP(degree=-90, refit=refit)
+            problem = self.rotate_TSP(problem, degree=90, refit=refit)
+            problem = self.flip_TSP_simple(problem)
+            problem = self.rotate_TSP(problem, degree=-90, refit=refit)
         elif flip_axis == 3:
-            self.rotate_TSP(degree=45, refit=refit)
-            self.flip_TSP_simple()
-            self.rotate_TSP(degree=-45, refit=refit)
+            problem = self.rotate_TSP(problem, degree=45, refit=refit)
+            problem = self.flip_TSP_simple(problem)
+            problem = self.rotate_TSP(problem, degree=-45, refit=refit)
         elif flip_axis == 4:
-            self.rotate_TSP(degree=-45, refit=refit)
-            self.flip_TSP_simple()
-            self.rotate_TSP(degree=45, refit=refit)
+            problem = self.rotate_TSP(problem, degree=-45, refit=refit)
+            problem = self.flip_TSP_simple(problem)
+            problem = self.rotate_TSP(problem, degree=45, refit=refit)
+        return problem
     
-    def apply_PCA_to_TSP(self, variant=1):
+    def apply_PCA_to_TSP(self, problem, variant=1):
+        dimension = problem.shape[1]
         if variant == 0:
-            return 0
-        pca = PCA(n_components=self.dimension) # center & rotate coordinates
-        self.problems = np.array([pca.fit_transform(problem) for problem in self.problems])
-        self.fit_TSP_into_square()
+            return problem
+        pca = PCA(n_components=dimension) # center & rotate coordinates
+        problem = pca.fit_transform(problem)
+        return self.fit_TSP_into_square(problem)
 
-    def rotate_TSP(self, degree, refit=True):
-        assert self.dimension == 2
-        self.center_TSP(refit)
-        self.problems = rotate_2D(self.problems, degree)
+    def rotate_TSP(self, problem, degree, refit=True):
+        dimension = problem.shape[1]
+        assert dimension == 2
+        problem = self.center_TSP(problem, refit)
+        problem = rotate_2D(problem, degree)
         if refit:
-            self.fit_TSP_into_square()
+            return self.fit_TSP_into_square(problem)
         else:
-            self.translate_TSP(shift=(0.5,0.5))
+            return self.translate_TSP(problem, shift=(0.5,0.5))
 
-    def translate_TSP(self, shift=(0.5,0.5)):
-        assert self.dimension == 2
-        x = self.problems[:,:,0:1]
-        y = self.problems[:,:,1::]
-        self.problems = np.concatenate((x - shift[0], y - shift[1]), -1)
+    def translate_TSP(self, problem, shift=(0.5,0.5)):
+        dimension = problem.shape[1]
+        assert dimension == 2
+        x = problem[:,0:1]
+        y = problem[:,1::]
+        return np.concatenate((x - shift[0], y - shift[1]), -1)
 
+    def fit_TSP_into_square(self, problem):
+        dimension = problem.shape[1]
+        maxima = []
+        minima = []
+        for k in range(dimension):
+            maxima.append(np.max(problem[:,k]))
+            minima.append(np.min(problem[:,k]))
 
-    def fit_TSP_into_square(self):
-        for j, problem in enumerate(self.problems):
-            maxima = []
-            minima = []
-            for k in range(self.dimension):
-                maxima.append(np.max(problem[:,k]))
-                minima.append(np.min(problem[:,k]))
+        differences = [maxima[k] - minima[k] for k in range(dimension)]
 
-            differences = [maxima[k] - minima[k] for k in range(self.dimension)]
+        scaler = 1 / np.max(differences)
 
-            scaler = 1 / np.max(differences)
+        for k in range(dimension):
+            problem[:,k] = scaler * (problem[:,k] - minima[k])
+        return problem
 
-            for k in range(self.dimension):
-                self.problems[j,:,k] = scaler * (problem[:,k] - minima[k])
-
-    def center_TSP(self, refit=False):
+    def center_TSP(self, problem, refit=False):
         if refit:
-            self.fit_TSP_into_square()
-        self.problems = self.problems - 0.5
+            problem = self.fit_TSP_into_square(problem)
+        return problem - 0.5
 
-    def apply_random_transfo(self):
+    def apply_random_transfo(self, problem, no_transfo=False):
+        if no_transfo:
+            return problem
         flip_axis = [0, 1, 2, 3, 4]
-        variants = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+        variants = [0, 1, 2, 3, 4, 5, 6, 7]
         degrees = np.arange(0, 360, 45)
-        pcas = [-1, 0]
+        pcas = [0, 1]
         
         # make random choices
         axis = random.choice(flip_axis)
         degree = random.choice(degrees)
         variant = random.choice(variants)
         pca = random.choice(pcas)
+
+        problem = self.pomo_TSP(problem, variant=variant)
+        problem = self.apply_PCA_to_TSP(problem, pca)
+        problem = self.flip_TSP(problem, axis)
+        problem = self.rotate_TSP(problem, degree, refit=True)
+        return problem
+
+# class TSP_EucTransformer:
+    
+#     def __init__(self, sampling_steps=64) -> None:
+#         self.problems = None
+#         self.transformed_problems = None
         
-        self.pomo_TSP(variant=variant)
-        if pca == -1:
-            self.apply_PCA_to_TSP()
-        self.flip_TSP(axis)
-        self.rotate_TSP(degree, refit=True)
+#         self.problem_size = None
+#         self.dimension = None
+#         self.num_problems = None
+#         self.sampling_steps = sampling_steps
+
+#     def load_TSPs_from_nx(self, g_list):
+#         # extract node features (node position)
+#         self.problems = np.array([[g.nodes[k]['coord'] for k in g.nodes()] for g in g_list])
+#         self.transformed_problems = np.tile(np.expand_dims(self.problems, axis=1), (1,self.sampling_steps,1,1))
+#         # self.transformed_problems = np.copy(self.problems)
+#         self.dimension = self.problems.shape[-1]
+#         self.problem_size = self.problems.shape[-2]
+#         self.num_problems = self.problems.shape[0]
+
+#     def load_TSP_from_coords(self, problems):
+#         self.problems = np.array(problems)
+#         self.transformed_problems = np.tile(np.expand_dims(self.problems, axis=1), (1,self.sampling_steps,1,1))
+#         # self.transformed_problems = np.copy(self.problems)
+#         self.dimension = self.problems.shape[-1]
+#         self.problem_size = self.problems.shape[-2]
+#         self.num_problems = self.problems.shape[0]
+
+#     def save_TSP_as_nx(self, problems=None):
+#         if problems is None:
+#             problems = self.problems
+#         g_list = []
+#         for problem in problems:
+#             edges = [(s[0],t[0],np.linalg.norm(s[1]-t[1])) for s,t in combinations(enumerate(problem),2)]
+#             g = nx.Graph()
+#             g.add_weighted_edges_from(edges)
+#             feature_dict = {k: {'coord': problem[k]} for k in range(self.problem_size)} 
+#             nx.set_node_attributes(g, feature_dict)
+#             g_list.append(g)
+#         return g_list
+    
+#     def reset_TSPs_to_default(self):
+#         self.transformed_problems = np.tile(self.problems, (1,self.sampling_steps,1,1))
+    
+#     def scale_TSP(self, scaler=1.0, problems=None):
+#         if problems is None:
+#             problems = self.problems
+#         self.transformed_problems = problems * scaler
+
+#     def flip_TSP_coordinates(self, problems=None):
+#         # if self.dimension == 2:
+#         #     matrix = np.array([[0,1],[1,0]])
+#         #     self.coordinates = self.coordinates @ matrix
+#         # else:
+#         #     temp = self.coordinates.transpose()
+#         #     np.random.shuffle(temp)
+#         #     self.coordinates = temp.transpose()
+#         if problems is None:
+#             problems = self.problems
+#         self.problems = self.problems[:,:,::-1]
+
+#     def pomo_TSP(self, variant=0):
+#         assert self.dimension == 2
+#         x = self.problems[:,:,0:1]
+#         y = self.problems[:,:,1::]
+#         if variant == 0:
+#             self.problems = np.concatenate((x, y), -1)
+#         elif variant == 1:
+#             self.problems = np.concatenate((1 - x, y), 2)
+#         elif variant == 2:
+#             self.problems = np.concatenate((x, 1 - y), -1)
+#         elif variant == 3:
+#             self.problems = np.concatenate((1 - x, 1 - y), -1)
+#         elif variant == 4:
+#             self.problems = np.concatenate((y, x), -1)
+#         elif variant == 5:
+#             self.problems = np.concatenate((1 - y, x), -1)
+#         elif variant == 6:
+#             self.problems = np.concatenate((y, 1 - x), -1)
+#         elif variant == 7:
+#             self.problems = np.concatenate((1 - y, 1 - x), -1)
+    
+#     def flip_TSP_simple(self, refit=False):
+#         # can be realized as a (N+1)D rotation along various axis
+#         assert self.dimension == 2
+#         self.center_TSP(refit)
+#         temp = np.concatenate((self.problems, np.zeros((self.num_problems, self.problem_size, 1))), 2)
+#         temp = rotate_3D(temp, degree=180)
+#         self.problems = temp[:,:,0:self.dimension]
+#         if refit:
+#             self.fit_TSP_into_square()
+    
+#     def flip_TSP(self, flip_axis=0, refit=False):
+#         if flip_axis == 0:
+#             pass
+#         elif flip_axis == 1:
+#             self.flip_TSP_simple()
+#         elif flip_axis == 2:
+#             self.rotate_TSP(degree=90, refit=refit)
+#             self.flip_TSP_simple()
+#             self.rotate_TSP(degree=-90, refit=refit)
+#         elif flip_axis == 3:
+#             self.rotate_TSP(degree=45, refit=refit)
+#             self.flip_TSP_simple()
+#             self.rotate_TSP(degree=-45, refit=refit)
+#         elif flip_axis == 4:
+#             self.rotate_TSP(degree=-45, refit=refit)
+#             self.flip_TSP_simple()
+#             self.rotate_TSP(degree=45, refit=refit)
+    
+#     def apply_PCA_to_TSP(self, variant=1):
+#         if variant == 0:
+#             return 0
+#         pca = PCA(n_components=self.dimension) # center & rotate coordinates
+#         self.problems = np.array([pca.fit_transform(problem) for problem in self.problems])
+#         self.fit_TSP_into_square()
+
+#     def rotate_TSP(self, degree, refit=True):
+#         assert self.dimension == 2
+#         self.center_TSP(refit)
+#         self.problems = rotate_2D(self.problems, degree)
+#         if refit:
+#             self.fit_TSP_into_square()
+#         else:
+#             self.translate_TSP(shift=(0.5,0.5))
+
+#     def translate_TSP(self, shift=(0.5,0.5)):
+#         assert self.dimension == 2
+#         x = self.problems[:,:,0:1]
+#         y = self.problems[:,:,1::]
+#         self.problems = np.concatenate((x - shift[0], y - shift[1]), -1)
+
+
+#     def fit_TSP_into_square(self):
+#         for j, problem in enumerate(self.problems):
+#             maxima = []
+#             minima = []
+#             for k in range(self.dimension):
+#                 maxima.append(np.max(problem[:,k]))
+#                 minima.append(np.min(problem[:,k]))
+
+#             differences = [maxima[k] - minima[k] for k in range(self.dimension)]
+
+#             scaler = 1 / np.max(differences)
+
+#             for k in range(self.dimension):
+#                 self.problems[j,:,k] = scaler * (problem[:,k] - minima[k])
+
+#     def center_TSP(self, refit=False):
+#         if refit:
+#             self.fit_TSP_into_square()
+#         self.problems = self.problems - 0.5
+
+#     def apply_random_transfo(self):
+#         flip_axis = [0, 1, 2, 3, 4]
+#         variants = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+#         degrees = np.arange(0, 360, 45)
+#         pcas = [-1, 0]
+        
+#         # make random choices
+#         axis = random.choice(flip_axis)
+#         degree = random.choice(degrees)
+#         variant = random.choice(variants)
+#         pca = random.choice(pcas)
+        
+#         self.pomo_TSP(variant=variant)
+#         if pca == -1:
+#             self.apply_PCA_to_TSP()
+#         self.flip_TSP(axis)
+#         self.rotate_TSP(degree, refit=True)
 
     
 

@@ -179,19 +179,19 @@ def get_test_approx_ratios_for_model(test_set_names, model_name, search_strategy
     mean_approx_ratios = []
     std_approx_ratios = []
     for test_set in test_set_names:
-        result_dir = f'results/{model_name}/{test_set}'
+        result_dir = f'results/{model_name}/test_sets/{test_set}'
         try:
             fnames, approx_ratios, test_lengths, solutions = get_data_from_result_files(result_dir, search_strategy=search_strategy)
         except: 
-            print(search_strategy)
-            print('Using placeholders!')
-            approx_ratios = [1]
+            # print(search_strategy)
+            # print('Using placeholders!')
+            approx_ratios = [np.nan]
         mean_approx_ratios.append(np.mean(approx_ratios))
         std_approx_ratios.append(np.std(approx_ratios))
     return mean_approx_ratios, std_approx_ratios
 
 def get_data_from_result_files(result_dir, search_strategy='greedy'):
-    print(result_dir)
+    # print(result_dir)
     for f in os.listdir(result_dir):
         if not search_strategy in f:
             continue

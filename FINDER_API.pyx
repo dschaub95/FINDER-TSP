@@ -105,6 +105,7 @@ class FINDER_API:
         # search startegy/ testing parameters
         self.cfg['search_strategy'] = 'greedy'
         self.cfg['beam_width'] = 64
+        self.cfg['sample_steps'] = 64
         self.cfg['test_batch_size'] = 256
 
         # Q-learning hyperparameters
