@@ -7,10 +7,10 @@ from py_utils.FINDER_test_utils import *
 import sys
 import numpy as np
 
-if len(sys.argv) >= 2:
+if len(sys.argv) > 2:
     model_name = sys.argv[1]
     beam_width = int(sys.argv[2])
-elif len(sys.argv) == 1:
+elif len(sys.argv) == 2:
     model_name = sys.argv[1]
 else:
     model_name = None
