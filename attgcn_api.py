@@ -105,7 +105,7 @@ class ATTGCN_API():
         K = num_nodes - 1
         avg_mean_rank = [] 
         top_k, cluster_center = K, 0
-        if num_nodes == 20:
+        if num_nodes <= 20:
             threshold = 1
         else:
             threshold = math.ceil((num_nodes / (top_k+1) ) * 5)
@@ -113,6 +113,10 @@ class ATTGCN_API():
         epoch = int(len(self.test_set)/batch_size)
         start_row_num = 0
 
+        if num_nodes <= 20:
+            K_expand = K
+        elif num_nodes == 50:
+            K_expand = 29
         # init
         count_buff = np.zeros(shape=(batch_size*threshold, ), dtype=np.int32)
         edges = np.zeros(shape=(batch_size*threshold, K+1, K+1), dtype=np.int32)
@@ -133,7 +137,7 @@ class ATTGCN_API():
                 edge, edges_value, node, node_coord, edge_target, node_target, mesh, omega = partition_one_graph(coor=self.test_set[start_row_num+i], 
                                                                                                                  node_num=num_nodes, 
                                                                                                                  cluster_center=0, 
-                                                                                                                 top_k=K)
+                                                                                                                 top_k=K, top_k_expand=K_expand)
                 edges[i*threshold:(i+1)*threshold, ...] = edge
                 edges_values[i*threshold:(i+1)*threshold, ...] = edges_value
                 nodes[i*threshold:(i+1)*threshold, ...] = node

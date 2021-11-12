@@ -38,7 +38,7 @@ def partition_one_graph(coor, node_num=20, cluster_center=0, top_k=19, top_k_exp
     
     neighbor = np.argpartition(distB, kth = top_k, axis=1)
     
-    neighbor_expand = np.argpartition(distB, kth = top_k_expand, axis=1)
+    neighbor_expand = np.argpartition(distB, kth=top_k_expand, axis=1)
     Omega_w = np.zeros(shape=(node_num, ), dtype = np.int32)
     Omega = np.zeros(shape=(node_num, node_num), dtype = np.int32)
     
@@ -47,7 +47,7 @@ def partition_one_graph(coor, node_num=20, cluster_center=0, top_k=19, top_k_exp
     edges_target, nodes_target = [], []
     meshs = []
     num_clusters = 0
-    if node_num==20:
+    if node_num <= 20:
         num_clusters_threshold = 1
     else:
         num_clusters_threshold = math.ceil((node_num / (top_k+1) ) * 5)
