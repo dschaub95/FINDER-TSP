@@ -4,11 +4,9 @@
 from __future__ import print_function, division
 
 import tensorflow as tf
-tf.compat.v1.set_random_seed(37)
 import numpy as np
-np.random.seed(37)
 import random
-random.seed(37)
+
 
 import scipy.linalg as linalg
 from scipy.sparse import csr_matrix
@@ -38,18 +36,19 @@ from dqn.FINDER_state_encoder import MHAStateEncoder, BasicStateEncoder
 
 
 np.set_printoptions(threshold=sys.maxsize)
-# fix seeds for graph generation and weight init
-# tf.set_random_seed(73)
-# random.seed(7)
-# np.random.seed(42)
 
 cdef double inf = 1073741823.5
 
 class FINDER:
     
     def __init__(self, config):
+        tf.compat.v1.set_random_seed(37)
+        np.random.seed(37)
+        random.seed(37)
+        
         print("Gpu available:", tf.test.is_gpu_available())
         print("Built with cuda:", tf.test.is_built_with_cuda())
+        
         self.cfg = config
         
         self.print_params = True
@@ -172,12 +171,12 @@ class FINDER:
         # saving and loading networks
         self.saver = tf.compat.v1.train.Saver(max_to_keep=None)
         #self.session = tf.InteractiveSession()
-        config = tf.ConfigProto(device_count={"CPU": 8},  # limit to num_cpu_core CPU usage
-                                inter_op_parallelism_threads=100,
-                                intra_op_parallelism_threads=100,
-                                log_device_placement=False)
-        config.gpu_options.allow_growth = True
-        self.session = tf.Session(config=config)
+        tf_config = tf.ConfigProto(device_count={"CPU": 8},  # limit to num_cpu_core CPU usage
+                                   inter_op_parallelism_threads=100,
+                                   intra_op_parallelism_threads=100,
+                                   log_device_placement=False)
+        tf_config.gpu_options.allow_growth = True
+        self.session = tf.Session(config=tf_config)
 
         # self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
         self.session.run(tf.global_variables_initializer())

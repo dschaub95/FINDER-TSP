@@ -1,5 +1,4 @@
 import numpy as np
-np.random.seed(42)
 import os
 import time
 from shutil import copy
@@ -8,10 +7,6 @@ from tqdm import tqdm
 from datetime import datetime
 from distutils.dir_util import copy_tree
 from FINDER import FINDER
-# fix seeds for graph generation and weight init
-# tf.set_random_seed(73)
-# random.seed(7)
-# np.random.seed(42)
 
 # test and evaluation functionalities or basically any interaction with FINDER in here
 
@@ -156,6 +151,7 @@ class FINDER_API:
         self.DQN.cfg = self.cfg
         
     def reinit_FINDER(self, config_path):
+        del self.DQN
         config = read_config(config_path)
         for key in self.cfg:         
             try:
