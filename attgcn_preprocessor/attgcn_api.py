@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 
 import sys
-sys.path.insert(1, 'attgcn_preprocessor')
+# sys.path.insert(1, 'attgcn_preprocessor')
 import os
 
 import json
@@ -15,7 +15,7 @@ import math
 import numpy as np
 from scipy.special import softmax
 
-from config import *
+from attgcn_preprocessor.config import *
 from sklearn.utils.class_weight import compute_class_weight
 
 # Remove warning
@@ -28,12 +28,12 @@ warnings.simplefilter('ignore', SparseEfficiencyWarning)
 from scipy.spatial.distance import pdist
 from scipy.spatial.distance import squareform
 
-from data.data_generator import tsp_instance_reader
+from attgcn_preprocessor.data.data_generator import tsp_instance_reader
 
-from utils.process import *
-from utils.tsplib import read_tsplib_coor, read_tsplib_opt, write_tsplib_prob
-from utils.test_utils import partition_one_graph, multiprocess
-from utils.plot_utils import plot_predictions_cluster
+from attgcn_preprocessor.utils.process import *
+from attgcn_preprocessor.utils.tsplib import read_tsplib_coor, read_tsplib_opt, write_tsplib_prob
+from attgcn_preprocessor.utils.test_utils import partition_one_graph, multiprocess
+from attgcn_preprocessor.utils.plot_utils import plot_predictions_cluster
 
 from multiprocessing import Pool
 from multiprocessing import cpu_count
