@@ -6,7 +6,7 @@ def find_best_model(dqn, VCFile_path):
     if VCFile_path:
         VCFile = VCFile_path
     else:
-        VCFile = './models/%s/ModelVC_%d_%d.csv'%(dqn.cfg['g_type'], dqn.cfg['NUM_MIN'], dqn.cfg['NUM_MAX'])
+        VCFile = './logs/%s/ModelVC_%d_%d.csv'%(dqn.cfg['g_type'], dqn.cfg['NUM_MIN'], dqn.cfg['NUM_MAX'])
     vc_list = []
     iterations = []
     for line in open(VCFile):
@@ -20,7 +20,7 @@ def find_best_model(dqn, VCFile_path):
     min_vc = str(np.round(np.min(vc_list), 6))
     best_model_iter = iterations[min_arg_vc]
 
-    best_model = './models/%s/nrange_%d_%d_iter_%d.ckpt' % (dqn.cfg['g_type'], dqn.cfg['NUM_MIN'], dqn.cfg['NUM_MAX'], best_model_iter)
+    best_model = './logs/%s/nrange_%d_%d_iter_%d.ckpt' % (dqn.cfg['g_type'], dqn.cfg['NUM_MIN'], dqn.cfg['NUM_MAX'], best_model_iter)
     print(best_model)
     return best_model, VCFile, min_vc
 
@@ -31,7 +31,7 @@ def find_all_models(dqn, valid_file_path):
     if valid_file_path:
         VCFile = valid_file_path
     else:
-        VCFile = './models/%s/ModelVC_%d_%d.csv'%(dqn.cfg['g_type'], dqn.cfg['NUM_MIN'], dqn.cfg['NUM_MAX'])
+        VCFile = './logs/%s/ModelVC_%d_%d.csv'%(dqn.cfg['g_type'], dqn.cfg['NUM_MIN'], dqn.cfg['NUM_MAX'])
     vc_list = []
     iterations = []
     model_list = []
@@ -39,12 +39,12 @@ def find_all_models(dqn, valid_file_path):
         iteration, approx_ratio = line.split(' ')
         vc_list.append(float(approx_ratio))
         iterations.append(int(iteration))
-        model_list.append(f'./models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}_iter_{iteration}.ckpt')
+        model_list.append(f'./logs/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}_iter_{iteration}.ckpt')
     min_arg_vc = np.argmin(vc_list)
     min_vc = str(np.round(np.min(vc_list), 6))
     best_model_iter = iterations[min_arg_vc]
 
-    best_model = f'./models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}_iter_{best_model_iter}.ckpt'
+    best_model = f'./logs/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}_iter_{best_model_iter}.ckpt'
     print(best_model)
     return model_list, best_model, VCFile, min_vc
 

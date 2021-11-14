@@ -7,7 +7,6 @@ import tensorflow as tf
 import numpy as np
 import random
 
-
 import scipy.linalg as linalg
 from scipy.sparse import csr_matrix
 from itertools import combinations
@@ -23,7 +22,7 @@ import re
 import gc
 
 
-import PrepareBatchGraph
+from model import PrepareBatchGraph
 import graph
 import nstep_replay_mem
 import nstep_replay_mem_prioritized
@@ -181,7 +180,7 @@ class FINDER:
         # self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
         self.session.run(tf.global_variables_initializer())
 
-        self.writer = tf.compat.v1.summary.FileWriter('./graphs', graph=self.session.graph)
+        self.writer = tf.compat.v1.summary.FileWriter('./logs/graphs', graph=self.session.graph)
 
 ################################################# New code for FINDER #################################################
 ###################################################### BuildNet start ######################################################    
@@ -374,8 +373,8 @@ class FINDER:
         self.TakeSnapShot()
         self.UpdateTestDQN()
         
-        #save_dir = './models/%s'%self.cfg['g_type']
-        save_dir = './models/{}/nrange_{}_{}'.format(self.cfg['g_type'], NUM_MIN, NUM_MAX)
+        #save_dir = './logs/%s'%self.cfg['g_type']
+        save_dir = './logs/{}/nrange_{}_{}'.format(self.cfg['g_type'], NUM_MIN, NUM_MAX)
         ckpt_save_dir = f'{save_dir}/checkpoints'
         architecture_save_dir = f'{save_dir}/architecture'
         if not os.path.exists(save_dir):

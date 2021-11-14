@@ -3,5 +3,6 @@ set -e
 modelName="FINDER_TSP"
 
 prompt="Step1:Building the model of "$modelName""
-echo -e "\033[40;37m ${prompt} \033[0m" 
+echo -e "\033[40;37m ${prompt} \033[0m"
+cd model/ 
 python setup.py build_ext -i

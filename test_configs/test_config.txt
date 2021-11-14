@@ -1,6 +1,0 @@
-# Environment parameters
-help_func = True # whether to use helper function during node insertion process, which inserts node into best position in current partial tour, default value false
-
-# search startegy
-search_strategy = 'beam_search' # 'beam_search', 'beam_search+', 'greedy'
-beam_width = 8

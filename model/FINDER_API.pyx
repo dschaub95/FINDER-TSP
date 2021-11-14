@@ -1,6 +1,8 @@
 import numpy as np
 import os
 import time
+import sys
+# sys.path.insert(1,'../')
 from shutil import copy
 from distutils.util import strtobool
 from tqdm import tqdm
@@ -174,8 +176,8 @@ class FINDER_API:
         g_type = self.cfg['g_type']
         NUM_MIN = self.cfg['NUM_MIN']
         NUM_MAX = self.cfg['NUM_MAX']
-        config_file = 'current_config.txt'
-        config_save_dir = f'models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}'
+        config_file = 'config.txt'
+        config_save_dir = f'logs/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}'
         try:
             copy(self.config_path, f'{config_save_dir}/{config_file}')
         except:
@@ -185,9 +187,9 @@ class FINDER_API:
         g_type = self.cfg['g_type']
         NUM_MIN = self.cfg['NUM_MIN']
         NUM_MAX = self.cfg['NUM_MAX']
-        architecture_save_dir = f'models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}/architecture'
+        architecture_save_dir = f'logs/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}/architecture'
         self.create_dir(architecture_save_dir)
-        architecture_paths = ['.', '.', '.', 'src/lib', 'src/lib']
+        architecture_paths = ['model', 'model', 'model', 'model/src/lib', 'model/src/lib']
         architecture_files = ['FINDER.pyx', 'PrepareBatchGraph.pyx', 'PrepareBatchGraph.pxd', 'PrepareBatchGraph.cpp', 'PrepareBatchGraph.h']
         for k, a_file in enumerate(architecture_files):
             a_path = architecture_paths[k]
@@ -213,7 +215,7 @@ class FINDER_API:
         dt_string = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
 
         checkpoint_suffixes = ['data-00000-of-00001', 'index', 'meta']
-        base_path = f'./models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}'
+        base_path = f'./logs/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}'
         valid_file = f'Validation_{NUM_MIN}_{NUM_MAX}.csv'
         valid_file_path = f'{base_path}/{valid_file}'
         
@@ -247,7 +249,7 @@ class FINDER_API:
             self.save_checkpoint_files(best_ckpt_save_dir, ordered_ckpts[k][0], rank=k+1)
         
         print("Saving config file...")
-        config_file = 'current_config.txt'
+        config_file = 'config.txt'
         copy(f'{base_path}/{config_file}', f'{save_dir}/config.txt')
 
         if save_architecture:
@@ -272,7 +274,7 @@ class FINDER_API:
         for suffix in checkpoint_suffixes:
             old_ckpt_name = f'nrange_{NUM_MIN}_{NUM_MAX}_iter_{iter}.ckpt.{suffix}'
             new_ckpt_name = f'nrange_{NUM_MIN}_{NUM_MAX}_iter_{iter}_rank_{rank}.ckpt.{suffix}'
-            ckpt_path = f'./models/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}/checkpoints/{old_ckpt_name}'
+            ckpt_path = f'./logs/{g_type}/nrange_{NUM_MIN}_{NUM_MAX}/checkpoints/{old_ckpt_name}'
             copy(ckpt_path, f'{ckpt_save_dir}/{new_ckpt_name}')
     
     def create_dir(self, save_dir):

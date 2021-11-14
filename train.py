@@ -4,7 +4,8 @@ warnings.filterwarnings('ignore',category=FutureWarning)
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 import sys
-from FINDER_API import FINDER_API
+sys.path.insert(1, 'model/')
+from model.FINDER_API import FINDER_API
 from py_utils.FINDER_train_utils import *
 
 if len(sys.argv) > 1:

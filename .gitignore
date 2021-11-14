@@ -1,8 +1,5 @@
-models/**
-!models/.gitkeep
-
-best_models/**
-!best_models/.gitkeep
+logs/**
+!logs/.gitkeep
 
 saved_models/**
 !saved_models/.gitkeep
@@ -23,13 +20,14 @@ data/test_sets
 !data/valid_sets/.gitkeep
 !data/test_sets/.gitkeep
 
-graphs/**
-!graphs/.gitkeep
+logs/graphs/**
+!logs/graphs/.gitkeep
 
 .ipynb_checkpoints/**
 
 *.cpp
 !src/*/*.cpp
+!model/src/*/*.cpp
 *.c
 # Docker stuff
 .vscode/
