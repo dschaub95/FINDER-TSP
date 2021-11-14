@@ -1,4 +1,4 @@
-name: FINDER_env
+name: tsp
 channels:
   - defaults
 dependencies:
