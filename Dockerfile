@@ -22,7 +22,7 @@ RUN conda install pip -y
 
 RUN conda update -y -n base conda
 
-RUN conda create -y --name FINDER_TSP python=3.7 
+# RUN conda create -y --name FINDER_TSP python=3.7 
 RUN conda init bash
 # SHELL ["conda", "run", "-n", "FINDER_TSP", "/bin/bash", "-c"]
 # RUN conda activate FINDER_TSP
