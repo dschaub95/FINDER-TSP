@@ -22,7 +22,7 @@ import re
 import gc
 
 
-from model import PrepareBatchGraph
+import PrepareBatchGraph
 import graph
 import nstep_replay_mem
 import nstep_replay_mem_prioritized

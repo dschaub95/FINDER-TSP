@@ -9,15 +9,15 @@
 #define min(x, y) (x > y ? y : x)
 
 
- ReplaySample::ReplaySample(int batch_size){
+ReplaySample::ReplaySample(int batch_size){
     g_list.resize(batch_size);
     list_st.resize(batch_size);
     list_s_primes.resize(batch_size);
     list_at.resize(batch_size);
     list_rt.resize(batch_size);
     list_term.resize(batch_size);
- }
- NStepReplayMem::NStepReplayMem(int _memory_size)
+}
+NStepReplayMem::NStepReplayMem(int _memory_size)
 {
     memory_size = _memory_size;
     graphs.resize(memory_size);
