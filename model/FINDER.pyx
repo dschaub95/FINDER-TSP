@@ -41,6 +41,9 @@ cdef double inf = 1073741823.5
 class FINDER:
     
     def __init__(self, config):
+        # reset tf default graph
+        tf.compat.v1.reset_default_graph()
+        # fix random seeds
         tf.compat.v1.set_random_seed(37)
         np.random.seed(37)
         random.seed(37)
@@ -175,7 +178,7 @@ class FINDER:
                                    intra_op_parallelism_threads=100,
                                    log_device_placement=False)
         tf_config.gpu_options.allow_growth = True
-        self.session = tf.Session(config=tf_config)
+        self.session = tf.compat.v1.Session(config=tf_config)
 
         # self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
         self.session.run(tf.global_variables_initializer())
@@ -375,10 +378,11 @@ class FINDER:
         
         #save_dir = './logs/%s'%self.cfg['g_type']
         save_dir = './logs/{}/nrange_{}_{}'.format(self.cfg['g_type'], NUM_MIN, NUM_MAX)
-        ckpt_save_dir = f'{save_dir}/checkpoints'
-        architecture_save_dir = f'{save_dir}/architecture'
         if not os.path.exists(save_dir):
             os.mkdir(save_dir)
+        ckpt_save_dir = f'{save_dir}/checkpoints'
+        if not os.path.exists(ckpt_save_dir):
+            os.makedirs(ckpt_save_dir)
         valid_file = f'{save_dir}/Validation_{NUM_MIN}_{NUM_MAX}.csv'
         LossFile = f'{save_dir}/Loss_{NUM_MIN}_{NUM_MAX}.csv'
         valid_approx_out = open(valid_file, 'w')
@@ -396,10 +400,7 @@ class FINDER:
                 self.TakeSnapShot()
             # print("Fitting in 5 seconds...")
             # time.sleep(5)
-            loss = self.Fit()
-            if iter % 10 == 0:
-                loss_out.write(f'{iter} {loss}\n')
-                loss_out.flush()
+            
             # testing
             if iter % self.cfg['save_interval'] == 0:
                 os.system('clear')
@@ -433,13 +434,17 @@ class FINDER:
                 print(f"Loss: {loss}")
                 sys.stdout.flush()
                 model_path = f'{ckpt_save_dir}/nrange_{NUM_MIN}_{NUM_MAX}_iter_{iter}.ckpt'
-                if not os.path.exists(ckpt_save_dir):
-                    os.makedirs(ckpt_save_dir)
                 self.SaveModel(model_path)
+            # make the fit
+            loss = self.Fit()
+            if iter % 10 == 0:
+                loss_out.write(f'{iter} {loss}\n')
+                loss_out.flush()
             self.writer.flush()
         valid_approx_out.close()
         loss_out.close()
         self.writer.close()
+        self.session.close()
 
     def solve_greedy_batch(self, g_list, verbose=False):
         # for the test env the norm is not used since no reward is calculated
