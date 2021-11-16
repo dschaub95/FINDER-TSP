@@ -21,7 +21,7 @@ focus_start_end_node = True # whether to specifically include start and end node
 state_representation = 1 # 0:concat state, 1:MHA state
 
 # general training hyperparameters
-IsHuberloss = false # whether to use huberloss as loss function during training, default value false
+IsHuberloss = False # whether to use huberloss as loss function during training, default value false
 BATCH_SIZE = 64 # batch size during training, default value 64
 initialization_stddev = 0.01 # variance of weight initialization, default value 0.01
 MAX_ITERATION = 100000 # max training iterations, default value 150000
@@ -50,7 +50,7 @@ beam_width = 64
 test_batch_size = 512
 
 # Q-learning hyperparameters
-IsDoubleDQN = false # whether to use double DQN algorithm, default value false
+IsDoubleDQN = False # whether to use double DQN algorithm, default value false
 N_STEP = 5 # number of steps in NDQN until the reward is observed, default value 5
 GAMMA = 1.0 # decay rate of past observations, default value 1.
 UPDATE_TIME = 1000 # when to take snapshots, default value 1000
@@ -63,12 +63,12 @@ use_edge_probs = True
 probability_construction = False
 
 # validation set info
-valid_path = 'data/valid_sets/synthetic_nrange_20_20_100' # path to external validation samples in TSPLIB format, default value 'valid_sets/synthetic_nrange_10_20_200/'
+valid_path = 'data/valid_sets/synthetic_n_20_1000' # path to external validation samples in TSPLIB format, default value 'valid_sets/synthetic_nrange_10_20_200/'
 valid_scale_fac = 0.000001 # sets the factor of scaling that is applied to all external validation samples --> transfo into (0,1) square, default value 0.0001
 n_valid = 300 # number of graphs in validation set (only used if valid_path = None), default value 200
 
 # (hyper)parameters for prioritized replay sampling
-IsPrioritizedSampling = false # whether to use prioritized replay memory, default value false
+IsPrioritizedSampling = False # whether to use prioritized replay memory, default value false
 epsilon = 0.0000001 # small amount to avoid zero priority, default value 0.0000001
 alpha = 0.6 # [0~1] convert the importance of TD error to priority, default value 0.6
 beta = 0.4 # importance-sampling, from initial value increasing to 1, default value 0.4
