@@ -4,3 +4,9 @@ fastprogress
 scikit-learn
 matplotlib
 networkx
+pandas
+jupyter
+notebook
+tqdm
+cython
+tsplib95

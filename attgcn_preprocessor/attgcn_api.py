@@ -1,6 +1,5 @@
 
 import torch
-torch.cuda.is_available()
 import torch.nn.functional as F
 import torch.nn as nn
 
@@ -41,7 +40,7 @@ from multiprocessing import cpu_count
 from tqdm import tqdm
 
 class ATTGCN_API():
-    def __init__(self, config_path = "attgcn_preprocessor/configs/tsp20.json"):
+    def __init__(self, config_path="../attgcn_preprocessor/configs/tsp20.json"):
         self.config = get_config(config_path)
 
     def init_net(self):
@@ -66,7 +65,7 @@ class ATTGCN_API():
 
     def load_ckpt(self):
         # Load checkpoint
-        log_dir = f"attgcn_preprocessor/logs/{self.config.expt_name}"
+        log_dir = f"../attgcn_preprocessor/logs/{self.config.expt_name}"
         if torch.cuda.is_available():
             # TSP-20
             checkpoint = torch.load(f"{log_dir}/best_val_checkpoint.tar")

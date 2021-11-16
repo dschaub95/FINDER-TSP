@@ -2,8 +2,8 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 
-from models.gcn_layers import ResidualGatedGCNLayer, MLP
-from utils.model_utils import *
+from attgcn_preprocessor.models.gcn_layers import ResidualGatedGCNLayer, MLP
+from attgcn_preprocessor.utils.model_utils import *
 
 
 class ResidualGatedGCNModel(nn.Module):

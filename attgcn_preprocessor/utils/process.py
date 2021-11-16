@@ -12,12 +12,12 @@ from fastprogress import master_bar, progress_bar
 from torch.autograd import Variable
 from sklearn.utils.class_weight import compute_class_weight
 
-from config import *
-from utils.graph_utils import *
-from utils.google_tsp_reader import GoogleTSPReader
-from utils.plot_utils import *
-from models.gcn_model import ResidualGatedGCNModel
-from utils.model_utils import *
+from attgcn_preprocessor.config import *
+from attgcn_preprocessor.utils.graph_utils import *
+from attgcn_preprocessor.utils.google_tsp_reader import GoogleTSPReader
+from attgcn_preprocessor.utils.plot_utils import *
+from attgcn_preprocessor.models.gcn_model import ResidualGatedGCNModel
+from attgcn_preprocessor.utils.model_utils import *
 from datetime import datetime
 
 # setting random seed to 1

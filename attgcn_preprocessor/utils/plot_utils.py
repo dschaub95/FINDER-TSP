@@ -5,7 +5,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import networkx as nx
 
-from utils.graph_utils import *
+from attgcn_preprocessor.utils.graph_utils import *
 
 
 def plot_tsp(p, x_coord, W, W_val, W_target, title="default"):

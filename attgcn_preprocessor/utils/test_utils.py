@@ -4,17 +4,17 @@ import numpy as np
 from scipy.special import softmax
 import torch.nn.functional as F
 import torch.nn as nn
-from utils.plot_utils import plot_predictions_cluster
-from config import *
+from attgcn_preprocessor.utils.plot_utils import plot_predictions_cluster
+from attgcn_preprocessor.config import *
 from sklearn.utils.class_weight import compute_class_weight
 
-from utils.process import *
+from attgcn_preprocessor.utils.process import *
 from scipy.spatial.distance import pdist
 from scipy.spatial.distance import squareform
 
-from data.data_generator import tsp_instance_reader
+from attgcn_preprocessor.data.data_generator import tsp_instance_reader
 
-from utils.tsplib import read_tsplib_coor, read_tsplib_opt, write_tsplib_prob
+from attgcn_preprocessor.utils.tsplib import read_tsplib_coor, read_tsplib_opt, write_tsplib_prob
 
 
 def partition_one_graph(coor, node_num=20, cluster_center=0, top_k=19, top_k_expand=19):
