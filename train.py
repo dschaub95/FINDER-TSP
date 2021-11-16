@@ -1,4 +1,4 @@
-
+import argparse
 import warnings
 warnings.filterwarnings('ignore',category=FutureWarning)
 import os
@@ -8,19 +8,16 @@ sys.path.insert(1, 'model/')
 from model.FINDER_API import FINDER_API
 from py_utils.FINDER_train_utils import *
 
-if len(sys.argv) > 1:
-    train_config_file_path = sys.argv[1]
-    train_config_file_name = train_config_file_path.split('/')[-1].split('.')[0]
-else:
-    train_configs_path = './train_configs'
-    train_config_file = 'train_config.txt'
-    train_config_file_path = f'{train_configs_path}/{train_config_file}'
 
-api = FINDER_API(train_config_file_path)
-api.train()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_file", type=str, default='./configs/train_config.txt')
+    parser.add_argument("--model_name", type=str, default='model')
+    parser.add_argument("--log_path", type=str, default='.logs/')
+    parser.add_argument("--save_path", type=str, default='')
+    opts = parser.parse_args()
 
-if len(sys.argv) > 1:
-    api.save_train_results(model_name=train_config_file_name, num_best=10, save_all_ckpts=False)
-else:
-    model_name = 'model'
-    api.save_train_results(model_name=model_name, num_best=10, save_all_ckpts=False)
+    api = FINDER_API(opts.config_file)
+    api.train()
+    api.save_train_results(model_name=opts.model_name, num_best=10, save_all_ckpts=False)
+
