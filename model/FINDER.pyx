@@ -32,6 +32,8 @@ from py_utils.TSP_loader import TSP_loader
 from py_utils.TSP_transformer import TSP_EucTransformer
 from dqn.FINDER_decoder import MLPdecoder, AttentionDecoder
 from dqn.FINDER_state_encoder import MHAStateEncoder, BasicStateEncoder
+import wandb
+wandb.init(sync_tensorboard=True)
 
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -52,7 +54,8 @@ class FINDER:
         print("Built with cuda:", tf.test.is_built_with_cuda())
         
         self.cfg = config
-        
+        wandb.config.update(config)
+
         self.print_params = True
         self.print_test_results = True
         
@@ -178,16 +181,54 @@ class FINDER:
                                    intra_op_parallelism_threads=100,
                                    log_device_placement=False)
         tf_config.gpu_options.allow_growth = True
+        tf_config.gpu_options.per_process_gpu_memory_fraction = 0.9
         self.session = tf.compat.v1.Session(config=tf_config)
 
         # self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
         self.session.run(tf.global_variables_initializer())
+        
+        self.performance_summaries = self.prepare_tf_summaries()
 
-        self.writer = tf.compat.v1.summary.FileWriter('./logs/graphs', graph=self.session.graph)
+        save_dir = './logs/{}/nrange_{}_{}'.format(self.cfg['g_type'], NUM_MIN, NUM_MAX)
+        event_name = [f.name for f in os.scandir(save_dir) if f.name.split('.')[0] == 'events'][0]
+        # delete any existing event file
+        os.remove(f'{save_dir}/{event_name}')
+        self.writer = tf.compat.v1.summary.FileWriter(save_dir, graph=self.session.graph)
 
 ################################################# New code for FINDER #################################################
 ###################################################### BuildNet start ######################################################    
+    def prepare_tf_summaries(self):
+        with tf.compat.v1.name_scope('performance'):
+            # Summaries need to be displayed
+            # Whenever you need to record the loss, feed the mean loss to this placeholder
+            self.tf_loss_ph = tf.placeholder(tf.float32, shape=None, name='loss_summary')
+            # Create a scalar summary object for the loss so it can be displayed
+            tf_loss_summary = tf.compat.v1.summary.scalar('loss', self.tf_loss_ph)
+
+            # Whenever you need to record the loss, feed the mean test accuracy to this placeholder
+            self.tf_approx_ph = tf.placeholder(tf.float32, shape=None, name='approx_summary')
+            # Create a scalar summary object for the accuracy so it can be displayed
+            tf_approx_summary = tf.compat.v1.summary.scalar('approximation ratio', self.tf_approx_ph)
+
+        # # Create a summary for each weight bias in each layer
+        # all_summaries = []
+        # with tf.compat.v1.name_scope('performance'):
+        #     with tf.variable_scope(lid,reuse=True):
+        #         w = tf.compat.v1.get_variable('weights')
+
+        #         tf_w_hist = tf.compat.v1.summary.histogram('weights_hist', tf.reshape(w,[-1]))
+        #         all_summaries.append(tf_w_hist)
+
+        return tf.compat.v1.summary.merge([tf_loss_summary, tf_approx_summary])
     
+    def add_tf_summary(self, loss, approx_ratio, iteration):
+        # Execute the summaries defined above
+        summ = self.session.run(self.performance_summaries, feed_dict={self.tf_loss_ph:loss, self.tf_approx_ph:approx_ratio})
+
+        # Write the obtained summaries to the file, so it can be displayed in the TensorBoard
+        self.writer.add_summary(summ, iteration)
+
+
     def BuildAGNN_encoder(self):
         # some definitions for convenience
         cdef int node_init_dim = self.cfg['node_init_dim']
@@ -342,8 +383,9 @@ class FINDER:
                 loss_rl = tf.losses.mean_squared_error(self.placeholder_dict['target'], q_pred)
         # calculate full loss
         loss = loss_rl
-
-        trainStep = tf.compat.v1.train.AdamOptimizer(self.cfg['LEARNING_RATE']).minimize(loss)
+        optimizer = tf.compat.v1.train.AdamOptimizer(self.cfg['LEARNING_RATE'])
+        grads_and_vars = optimizer.compute_gradients(loss)
+        trainStep = optimizer.minimize(loss)
         # repeat states to calc q_values for all actions
         q_on_all = decoder(state_embed, action_embed, q_on_all=True, training=False)
 
@@ -351,7 +393,7 @@ class FINDER:
 
     
 ###################################################### BuildNet end ######################################################
-    
+
     def Train(self):
         cdef int NUM_MIN = self.cfg['NUM_MIN']
         cdef int NUM_MAX = self.cfg['NUM_MAX']
@@ -440,6 +482,8 @@ class FINDER:
             if iter % 10 == 0:
                 loss_out.write(f'{iter} {loss}\n')
                 loss_out.flush()
+            if iter % self.cfg['save_interval'] == 0:
+                self.add_tf_summary(loss, valid_approx, iter)
             self.writer.flush()
         valid_approx_out.close()
         loss_out.close()
