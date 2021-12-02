@@ -165,7 +165,6 @@ class FINDER_API:
         self.DQN = FINDER(config=self.cfg)
 
     def train(self, save_config=True, save_architecture=True):
-        print(self.cfg)
         if save_config:
             self.save_cur_config()
         if save_architecture:  
@@ -204,7 +203,6 @@ class FINDER_API:
         self.DQN.LoadModel(ckpt_path)
 
     def run_test(self, test_dir=None, graph_list=None, scale_factor=0.000001):
-        print(self.cfg)
         lengths, solutions, sol_times = self.DQN.Evaluate(test_dir=test_dir, g_list=graph_list, scale_factor=scale_factor)
         return lengths, solutions, sol_times
     

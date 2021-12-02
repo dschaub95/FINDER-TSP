@@ -33,7 +33,6 @@ from py_utils.TSP_transformer import TSP_EucTransformer
 from dqn.FINDER_decoder import MLPdecoder, AttentionDecoder
 from dqn.FINDER_state_encoder import MHAStateEncoder, BasicStateEncoder
 import wandb
-wandb.init(sync_tensorboard=True)
 
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -52,10 +51,9 @@ class FINDER:
         
         print("Gpu available:", tf.test.is_gpu_available())
         print("Built with cuda:", tf.test.is_built_with_cuda())
-        
-        self.cfg = config
-        wandb.config.update(config)
-
+        wandb.init(config=config, sync_tensorboard=True)
+        self.cfg = wandb.config
+        print("Current config:", self.cfg)
         self.print_params = True
         self.print_test_results = True
         
@@ -187,7 +185,8 @@ class FINDER:
         # self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
         self.session.run(tf.global_variables_initializer())
         
-        self.performance_summaries = self.prepare_tf_summaries()
+        # prepare all the summaries for logging
+        self.prepare_tf_summaries()
 
         save_dir = './logs/{}/nrange_{}_{}'.format(self.cfg['g_type'], NUM_MIN, NUM_MAX)
         event_name = [f.name for f in os.scandir(save_dir) if f.name.split('.')[0] == 'events'][0]
@@ -210,24 +209,30 @@ class FINDER:
             # Create a scalar summary object for the accuracy so it can be displayed
             tf_approx_summary = tf.compat.v1.summary.scalar('approximation ratio', self.tf_approx_ph)
 
-        # # Create a summary for each weight bias in each layer
-        # all_summaries = []
-        # with tf.compat.v1.name_scope('performance'):
-        #     with tf.variable_scope(lid,reuse=True):
-        #         w = tf.compat.v1.get_variable('weights')
+        self.performance_summary = tf.compat.v1.summary.merge([tf_loss_summary, tf_approx_summary])
 
-        #         tf_w_hist = tf.compat.v1.summary.histogram('weights_hist', tf.reshape(w,[-1]))
-        #         all_summaries.append(tf_w_hist)
+        # # Create a summary for gradient norms
+        # with tf.compat.v1.name_scope('gradients'):
+        #     gradients = self.grads_and_vars[0]
+        #     grad_norms = [tf.sqrt(tf.reduce_mean(g**2)) for g in gradients]
+        #     grad_norms_summary = [tf.summary.scalar('gradient_norm', grad_norm) for grad_norm in grad_norms]
+        
+        # self.grad_norm_summary = tf.compat.v1.summary.merge(grad_norms_summary)
 
-        return tf.compat.v1.summary.merge([tf_loss_summary, tf_approx_summary])
+        # # Create a summary for each weight in each layer
+        # with tf.compat.v1.name_scope('weights'):
+        #     with tf.variable_scope("", reuse=True):
+        #         weight_names = [tensor.name for tensor in self.Q_param_list]
+        #         weights = [tf.compat.v1.get_variable(name) for name in weight_names]
+        #         weight_summary = [tf.compat.v1.summary.histogram('weights_hist', tf.reshape(w, [-1])) for w in weights]
+        
+        # self.weight_summary = tf.compat.v1.summary.merge(weight_summary)
     
-    def add_tf_summary(self, loss, approx_ratio, iteration):
-        # Execute the summaries defined above
-        summ = self.session.run(self.performance_summaries, feed_dict={self.tf_loss_ph:loss, self.tf_approx_ph:approx_ratio})
-
+    def add_performance_summary(self, loss, approx_ratio, iteration):
+        summ = self.session.run(self.performance_summary, feed_dict={self.tf_loss_ph:loss, self.tf_approx_ph:approx_ratio})
         # Write the obtained summaries to the file, so it can be displayed in the TensorBoard
         self.writer.add_summary(summ, iteration)
-
+    
 
     def BuildAGNN_encoder(self):
         # some definitions for convenience
@@ -384,8 +389,9 @@ class FINDER:
         # calculate full loss
         loss = loss_rl
         optimizer = tf.compat.v1.train.AdamOptimizer(self.cfg['LEARNING_RATE'])
-        grads_and_vars = optimizer.compute_gradients(loss)
+        self.grads_and_vars = optimizer.compute_gradients(loss)
         trainStep = optimizer.minimize(loss)
+        
         # repeat states to calc q_values for all actions
         q_on_all = decoder(state_embed, action_embed, q_on_all=True, training=False)
 
@@ -483,7 +489,7 @@ class FINDER:
                 loss_out.write(f'{iter} {loss}\n')
                 loss_out.flush()
             if iter % self.cfg['save_interval'] == 0:
-                self.add_tf_summary(loss, valid_approx, iter)
+                self.add_performance_summary(loss, valid_approx, iter)
             self.writer.flush()
         valid_approx_out.close()
         loss_out.close()
@@ -547,23 +553,6 @@ class FINDER:
             g_list_chunked = [g_list[i:i+chunk_size] for i in range(0,len(g_list),chunk_size)]
             raw_solutions_chunked = [self.solve_with_augmentation(chunk, sample_steps) for chunk in tqdm(g_list_chunked)]
             raw_solutions = [solution for chunk in raw_solutions_chunked for solution in chunk]
-        # if 'beam_search' in self.cfg['search_strategy']:
-        #     if self.cfg['search_strategy'] == 'beam_search+':
-        #         raw_solutions = [self.solve_with_beam_search(graph=graph, select_true_best=True) for graph in tqdm(g_list)]
-        #     elif self.cfg['search_strategy'] == 'beam_search':
-        #         raw_solutions = [self.solve_with_beam_search(graph=graph, select_true_best=False) for graph in tqdm(g_list)]
-        #     # solutions = [sol + list(set(range(g_list[k].num_nodes))^set(sol)) for k, sol in enumerate(raw_solutions)]
-        #     for k, graph in tqdm(enumerate(g_list)):
-        #         if self.cfg['search_strategy'] == 'beam_search+':
-        #             sol = self.solve_with_beam_search(graph=graph, select_true_best=True)
-        #         elif self.cfg['search_strategy'] == 'beam_search':
-        #             sol = self.solve_with_beam_search(graph=graph, select_true_best=False)
-        #         nodes = list(range(graph.num_nodes))
-        #         solution = sol + list(set(nodes)^set(sol))
-        #         solutions.append(solution)
-        #         # print("sol:", sol)
-        #         # print("nodes:", nodes)
-        #         # print("Solution:", solution)
         else:
             if self.print_test_results:
                 verbose = True
