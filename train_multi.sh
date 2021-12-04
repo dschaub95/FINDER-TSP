@@ -1,5 +1,5 @@
 #!/bin/bash
-FILES=./train_configs/multi_train/*
+FILES=./configs/multi_train/*
 
 echo Select CUDA_VISIBLE_DEVICES
 read cuda_device
