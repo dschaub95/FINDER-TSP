@@ -1,0 +1,54 @@
+program: train.py
+method: bayes
+metric:
+  name: performance/approximation_ratio
+  goal: minimize
+parameters:
+  GAMMA:
+    distribution: uniform
+    min: 0.8
+    max: 1.0
+  N_STEP:
+    distribution: int_uniform
+    min: 3
+    max: 10
+  eps_end:
+    distribution: uniform
+    min: 0.01
+    max: 0.1
+  eps_step:
+    distribution: int_uniform
+    min: 5000
+    max: 20000
+  BATCH_SIZE:
+    distribution: int_uniform
+    min: 32
+    max: 128
+  REG_HIDDEN:
+    distribution: int_uniform
+    min: 16
+    max: 64
+  MEMORY_SIZE:
+    distribution: int_uniform
+    min: 75000
+    max: 300000
+  UPDATE_TIME:
+    distribution: int_uniform
+    min: 500
+    max: 2000
+  max_bp_iter:
+    distribution: int_uniform
+    min: 2
+    max: 5
+  LEARNING_RATE:
+    distribution: uniform
+    min: 0.0005
+    max: 0.002
+  initialization_stddev:
+    distribution: uniform
+    min: 0.005
+    max: 0.02
+  dropout_rate:
+    distribution: uniform
+    min: 0.0
+    max: 0.5
