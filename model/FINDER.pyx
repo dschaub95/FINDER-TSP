@@ -33,7 +33,7 @@ from py_utils.TSP_transformer import TSP_EucTransformer
 from dqn.FINDER_decoder import MLPdecoder, AttentionDecoder
 from dqn.FINDER_state_encoder import MHAStateEncoder, BasicStateEncoder
 import wandb
-
+os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 
 np.set_printoptions(threshold=sys.maxsize)
 
@@ -179,7 +179,7 @@ class FINDER:
                                    intra_op_parallelism_threads=100,
                                    log_device_placement=False)
         tf_config.gpu_options.allow_growth = True
-        tf_config.gpu_options.per_process_gpu_memory_fraction = 0.9
+        # tf_config.gpu_options.per_process_gpu_memory_fraction = 0.1
         self.session = tf.compat.v1.Session(config=tf_config)
 
         # self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
