@@ -496,6 +496,33 @@ class FINDER:
         self.writer.close()
         self.session.close()
 
+    def Test(self, graph_ids):
+        g_list = [self.TestSet.Get(gid) for gid in graph_ids]
+        # tour_lengths = []
+        # solutions = []
+        if self.cfg['search_strategy'] == 'beam_search+':
+            raw_solutions = [self.solve_with_beam_search(graph=graph, select_true_best=True) for graph in tqdm(g_list)]
+        elif self.cfg['search_strategy'] == 'beam_search':
+            raw_solutions = [self.solve_with_beam_search(graph=graph, select_true_best=False) for graph in tqdm(g_list)]
+        elif self.cfg['search_strategy'] == 'sampling':
+            sample_steps = self.cfg['sample_steps']
+            # restrict the size of one chunk such that max 10000 graphs are loaded
+            chunk_size = int(10000 / sample_steps)
+            g_list_chunked = [g_list[i:i+chunk_size] for i in range(0,len(g_list),chunk_size)]
+            raw_solutions_chunked = [self.solve_with_augmentation(chunk, sample_steps) for chunk in tqdm(g_list_chunked)]
+            raw_solutions = [solution for chunk in raw_solutions_chunked for solution in chunk]
+        else:
+            if self.print_test_results:
+                verbose = True
+            else:
+                verbose = False
+            raw_solutions = self.solve_greedy_batch(g_list, verbose=verbose)
+            if self.print_test_results:
+                print(raw_solutions[0])
+        solutions = [sol + list(set(range(g_list[k].num_nodes))^set(sol)) for k, sol in enumerate(raw_solutions)]
+        tour_lengths = np.array([self.utils.getTourLength(graph, solution) for graph, solution in zip(g_list, solutions)])   
+        return tour_lengths, solutions
+
     def solve_greedy_batch(self, g_list, verbose=False):
         # for the test env the norm is not used since no reward is calculated
         # number of nodes need to be equal for all graphs
@@ -537,33 +564,6 @@ class FINDER:
             step += 1
         solutions = [test_env.state for test_env in self.test_env_list]
         return solutions
-
-    def Test(self, graph_ids):
-        g_list = [self.TestSet.Get(gid) for gid in graph_ids]
-        # tour_lengths = []
-        # solutions = []
-        if self.cfg['search_strategy'] == 'beam_search+':
-            raw_solutions = [self.solve_with_beam_search(graph=graph, select_true_best=True) for graph in tqdm(g_list)]
-        elif self.cfg['search_strategy'] == 'beam_search':
-            raw_solutions = [self.solve_with_beam_search(graph=graph, select_true_best=False) for graph in tqdm(g_list)]
-        elif self.cfg['search_strategy'] == 'sampling':
-            sample_steps = self.cfg['sample_steps']
-            # restrict the size of one chunk such that max 10000 graphs are loaded
-            chunk_size = int(10000 / sample_steps)
-            g_list_chunked = [g_list[i:i+chunk_size] for i in range(0,len(g_list),chunk_size)]
-            raw_solutions_chunked = [self.solve_with_augmentation(chunk, sample_steps) for chunk in tqdm(g_list_chunked)]
-            raw_solutions = [solution for chunk in raw_solutions_chunked for solution in chunk]
-        else:
-            if self.print_test_results:
-                verbose = True
-            else:
-                verbose = False
-            raw_solutions = self.solve_greedy_batch(g_list, verbose=verbose)
-            if self.print_test_results:
-                print(raw_solutions[0])
-        solutions = [sol + list(set(range(g_list[k].num_nodes))^set(sol)) for k, sol in enumerate(raw_solutions)]
-        tour_lengths = np.array([self.utils.getTourLength(graph, solution) for graph, solution in zip(g_list, solutions)])   
-        return tour_lengths, solutions
     
     def solve_with_beam_search(self, graph, select_true_best=False, only_use_cur_qvalue=False):
         cdef int help_func = self.cfg['help_func']
