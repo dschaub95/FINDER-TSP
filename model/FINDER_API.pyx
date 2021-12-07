@@ -262,7 +262,7 @@ class FINDER_API:
                 copy_tree(f'{base_path}/architecture/dqn', f'{architecture_save_dir}/dqn')
             except:
                 print("Couldn't save dqn files!")
-
+        return save_dir
 
     def save_checkpoint_files(self, ckpt_save_dir, iter, rank=''):
         g_type = self.cfg['g_type']

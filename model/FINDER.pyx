@@ -173,17 +173,8 @@ class FINDER:
 
         # saving and loading networks
         self.saver = tf.compat.v1.train.Saver(max_to_keep=None)
-        #self.session = tf.InteractiveSession()
-        tf_config = tf.ConfigProto(device_count={"CPU": 8},  # limit to num_cpu_core CPU usage
-                                   inter_op_parallelism_threads=100,
-                                   intra_op_parallelism_threads=100,
-                                   log_device_placement=False)
-        tf_config.gpu_options.allow_growth = True
-        # tf_config.gpu_options.per_process_gpu_memory_fraction = 0.1
-        self.session = tf.compat.v1.Session(config=tf_config)
 
-        # self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
-        self.session.run(tf.global_variables_initializer())
+        self.start_tf_session()
         
         # prepare all the summaries for logging
         self.prepare_tf_summaries()
@@ -196,6 +187,19 @@ class FINDER:
 
 ################################################# New code for FINDER #################################################
 ###################################################### BuildNet start ######################################################    
+    def start_tf_session(self):
+        #self.session = tf.InteractiveSession()
+        tf_config = tf.ConfigProto(device_count={"CPU": 8},  # limit to num_cpu_core CPU usage
+                                   inter_op_parallelism_threads=100,
+                                   intra_op_parallelism_threads=100,
+                                   log_device_placement=False)
+        tf_config.gpu_options.allow_growth = True
+        # tf_config.gpu_options.per_process_gpu_memory_fraction = 0.1
+        self.session = tf.compat.v1.Session(config=tf_config)
+
+        # self.session = tf_debug.LocalCLIDebugWrapperSession(self.session)
+        self.session.run(tf.global_variables_initializer())
+    
     def prepare_tf_summaries(self):
         with tf.compat.v1.name_scope('performance'):
             # Summaries need to be displayed
@@ -1160,7 +1164,7 @@ class FINDER:
             g_list = self.tsp_loader.load_multi_tsp_as_nx(data_dir=valid_path, 
                                                           scale_factor=self.cfg['valid_scale_fac'], start_index=0, end_index=n_valid)
             n_valid = len(g_list)
-            self.cfg['n_valid'] = n_valid
+            self.cfg.update({'n_valid':n_valid}, allow_val_change=True)
             print(f"\nSucessfully loaded {n_valid} validation graphs!")
             if self.cfg['use_edge_probs']:
                 edge_probs = self.load_heatmaps(path=f'{valid_path}/heatmaps', num_cycles=0, num_samples_per_cycle=n_valid)
