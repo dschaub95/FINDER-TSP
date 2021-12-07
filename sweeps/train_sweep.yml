@@ -52,3 +52,7 @@ parameters:
     distribution: uniform
     min: 0.0
     max: 0.5
+  node_embed_dim:
+    distribution: int_uniform
+    min: 32
+    max: 128

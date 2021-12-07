@@ -63,7 +63,8 @@ use_edge_probs = True
 probability_construction = False
 
 # validation set info
-valid_path = 'data/valid_sets/synthetic_n_20_1000' # path to external validation samples in TSPLIB format, default value 'valid_sets/synthetic_nrange_10_20_200/'
+valid_path = 'data/valid_sets/synthetic_nrange_20_20_100/'
+# valid_path = 'data/valid_sets/synthetic_n_20_1000' # path to external validation samples in TSPLIB format, default value 'valid_sets/synthetic_nrange_10_20_200/'
 valid_scale_fac = 0.000001 # sets the factor of scaling that is applied to all external validation samples --> transfo into (0,1) square, default value 0.0001
 n_valid = 300 # number of graphs in validation set (only used if valid_path = None), default value 200
 

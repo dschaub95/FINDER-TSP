@@ -245,11 +245,11 @@ class FINDER:
         cdef int state_init_dim = self.cfg['state_init_dim']
         
         cdef int node_embed_dim = self.cfg['node_embed_dim']
-        cdef int edge_embed_dim = self.cfg['edge_embed_dim']
+        cdef int edge_embed_dim = self.cfg['node_embed_dim']
+        assert(node_embed_dim == edge_embed_dim)
         cdef double initialization_stddev = self.cfg['initialization_stddev']
 
         cdef int max_bp_iter = self.cfg['max_bp_iter']
-        assert(node_embed_dim == edge_embed_dim)
         # [node_init_dim, node_embed_dim]
         w_n2l = tf.Variable(tf.truncated_normal([node_init_dim, node_embed_dim], stddev=initialization_stddev), tf.float32)
 
