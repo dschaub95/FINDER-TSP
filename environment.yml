@@ -1,4 +1,4 @@
-name: tsp
+name: finder-tsp
 channels:
   - defaults
 dependencies:
