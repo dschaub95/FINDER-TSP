@@ -1,4 +1,4 @@
-name: torch_env
+name: torch_1.01_env
 channels:
   - pytorch
   - defaults
@@ -131,4 +131,4 @@ dependencies:
     - widgetsnbextension==3.5.2
     - wrapt==1.13.3
     - zipp==3.6.0
-prefix: /root/miniconda3/envs/torch_env
+prefix: /root/miniconda3/envs/torch_1.01_env

@@ -1,4 +1,4 @@
-program: train.py
+program: train.py --model_name='sweep_model'
 method: bayes
 metric:
   name: performance/approximation_ratio

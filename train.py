@@ -17,7 +17,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_name", type=str, default='model')
     parser.add_argument("--logging", type=bool, default=True)
     opts = parser.parse_known_args()[0]
-
+    
     if not opts.logging:
         os.environ["WANDB_MODE"] = 'disabled'
     
