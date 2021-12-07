@@ -65,7 +65,10 @@ class ATTGCN_API():
 
     def load_ckpt(self):
         # Load checkpoint
-        log_dir = f"../attgcn_preprocessor/logs/{self.config.expt_name}"
+        if os.path.isdir('./attgcn_preprocessor/'):
+            log_dir = f"./attgcn_preprocessor/logs/{self.config.expt_name}"
+        else:
+            log_dir = f"../attgcn_preprocessor/logs/{self.config.expt_name}"
         if torch.cuda.is_available():
             # TSP-20
             checkpoint = torch.load(f"{log_dir}/best_val_checkpoint.tar")
@@ -101,7 +104,7 @@ class ATTGCN_API():
         self.net.eval()
         result = []
         num_nodes = self.test_set_num_nodes
-        K = num_nodes - 1
+        K = 19
         avg_mean_rank = [] 
         top_k, cluster_center = K, 0
         if num_nodes <= 20:
