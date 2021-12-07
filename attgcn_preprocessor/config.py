@@ -65,7 +65,7 @@ def get_default_config():
     try:
         return Settings(json.load(open("../attgcn_preprocessor/configs/default.json")))
     except:
-        return Settings(json.load(open("../configs/default.json")))
+        return Settings(json.load(open("./attgcn_preprocessor/configs/default.json")))
 
 def get_config(filepath):
     """Returns settings from json file.
