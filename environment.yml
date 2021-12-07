@@ -174,4 +174,4 @@ dependencies:
     - fastprogress==1.0.0
     - tabulate==0.8.9
     - tsplib95==0.7.1
-prefix: /root/miniconda3/envs/FINDER_env
+prefix: /root/miniconda3/envs/finder-tsp
