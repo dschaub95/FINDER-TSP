@@ -16,11 +16,12 @@ if __name__ == "__main__":
     parser.add_argument("--config_file", type=str, default='./configs/train_config.txt')
     parser.add_argument("--model_name", type=str, default='model')
     parser.add_argument("--logging", type=bool, default=True)
+    parser.add_argument("--offline", type=bool, default=False)
     opts = parser.parse_known_args()[0]
-    
+    if opts.offline:
+        os.environ['WANDB_MODE'] = 'offline'
     if not opts.logging:
         os.environ["WANDB_MODE"] = 'disabled'
-    
     api = FINDER_API(opts.config_file)
     api.train()
     save_dir = api.save_train_results(model_name=opts.model_name, num_best=10, save_all_ckpts=False)

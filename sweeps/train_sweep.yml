@@ -1,5 +1,16 @@
 program: train.py
 method: bayes
+# controller:
+#   type: local
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - "--model_name"
+  - "sweep_model"
+  # - "--offline"
+  # - True
+  - ${args}
 metric:
   name: performance/approximation_ratio
   goal: minimize
