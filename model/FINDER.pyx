@@ -439,6 +439,7 @@ class FINDER:
         LossFile = f'{save_dir}/Loss_{NUM_MIN}_{NUM_MAX}.csv'
         valid_approx_out = open(valid_file, 'w')
         loss_out = open(LossFile, 'w')
+        best_valid_approx = np.inf
         for iter in tqdm(range(MAX_ITERATION)):
             start = time.clock()
             ###########-----------------------normal training data setup(start) -----------------##############################
@@ -469,22 +470,37 @@ class FINDER:
                 #         frac += self.Test(idx)[0]/valid_lengths[idx]
                 #     else:
                 #         frac += self.Test(idx)[0]
-                valid_approx = np.sum(self.Test(range(n_valid))[0]/valid_lengths) / n_valid
+                pred_lengths = self.Test(range(n_valid))[0]
+                valid_approx = np.sum(pred_lengths/valid_lengths) / n_valid
                 test_end = time.time()
                 # print("Test finished, sleeping for 5 seconds...")
                 # time.sleep(5)
                 if self.cfg['valid_path']:
                     # valid_approx = frac/len(valid_lengths)
                     valid_approx_out.write(f'{iter} {valid_approx}\n')
-                else:
-                    valid_approx_out.write('%.16f\n'%(valid_approx))
                 valid_approx_out.flush()
-                print('iter %d, eps %.4f, average tour length: %.6f'%(iter, eps, valid_approx))
-                print ('testing %d graphs time: %.2fs'%(self.cfg['n_valid'], test_end-test_start))
                 N_end = time.clock()
+                sys.stdout.flush()
+                # log stuff
+                print('iter %d, eps %.4f, approximation ratio: %.6f'%(iter, eps, valid_approx))    
+                print ('testing %d graphs time: %.2fs'%(self.cfg['n_valid'], test_end-test_start))
                 print ('%d iterations total time: %.2fs\n'%(self.cfg['save_interval'], N_end-N_start))
                 print(f"Loss: {loss}")
-                sys.stdout.flush()
+                test_time = np.round(test_end-test_start, 2)
+                avg_pred_time = test_time / n_valid
+                iter_tot_time = np.round(N_end-N_start, 2) - test_time
+                time_per_iter = iter_tot_time / self.cfg['save_interval']
+                # seperately log the best approximation ratio
+                if valid_approx < best_valid_approx:
+                    best_valid_approx = valid_approx
+                wandb.log(data={'epsilon': eps, 
+                                'iter': iter, 
+                                'avg_pred_time': avg_pred_time,
+                                'time_per_iter': time_per_iter,
+                                'performance/loss': loss,
+                                'performance/avg_len': np.mean(pred_lengths),
+                                'performance/approx_ratio': valid_approx,
+                                'performance/best_approx_ratio': best_valid_approx})
                 model_path = f'{ckpt_save_dir}/nrange_{NUM_MIN}_{NUM_MAX}_iter_{iter}.ckpt'
                 self.SaveModel(model_path)
             # make the fit
@@ -492,8 +508,8 @@ class FINDER:
             if iter % 10 == 0:
                 loss_out.write(f'{iter} {loss}\n')
                 loss_out.flush()
-            if iter % self.cfg['save_interval'] == 0:
-                self.add_performance_summary(loss, valid_approx, iter)
+            # if iter % self.cfg['save_interval'] == 0:
+            #     self.add_performance_summary(loss, valid_approx, iter)
             self.writer.flush()
         valid_approx_out.close()
         loss_out.close()
