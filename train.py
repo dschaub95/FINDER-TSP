@@ -3,13 +3,13 @@ import warnings
 warnings.filterwarnings('ignore',category=FutureWarning)
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ["TF_FORCE_GPU_ALLOW_GROWTH"] = "true"
 import sys
 sys.path.insert(1, 'model/')
 from model.FINDER_API import FINDER_API
 from py_utils.FINDER_train_utils import *
 from py_utils.FINDER_test_utils import *
 from test import test
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
