@@ -463,13 +463,7 @@ class FINDER:
                     N_start = N_end
                 frac = 0.0
                 self.UpdateTestDQN()
-                # tqdm.write("Running test...")
                 test_start = time.time()
-                # for idx in tqdm(range(n_valid)):
-                #     if valid_lengths:
-                #         frac += self.Test(idx)[0]/valid_lengths[idx]
-                #     else:
-                #         frac += self.Test(idx)[0]
                 pred_lengths = self.Test(range(n_valid))[0]
                 valid_approx = np.sum(pred_lengths/valid_lengths) / n_valid
                 test_end = time.time()
@@ -497,10 +491,10 @@ class FINDER:
                                 'iter': iter, 
                                 'avg_pred_time': avg_pred_time,
                                 'time_per_iter': time_per_iter,
-                                'performance/loss': loss,
-                                'performance/avg_len': np.mean(pred_lengths),
-                                'performance/approx_ratio': valid_approx,
-                                'performance/best_approx_ratio': best_valid_approx})
+                                'performance/training/loss': loss,
+                                'performance/validation/tsp20/avg_len': np.mean(pred_lengths),
+                                'performance/validation/tsp20/approx_ratio': valid_approx,
+                                'performance/validation/tsp20/best_approx_ratio': best_valid_approx})
                 model_path = f'{ckpt_save_dir}/nrange_{NUM_MIN}_{NUM_MAX}_iter_{iter}.ckpt'
                 self.SaveModel(model_path)
             # make the fit
